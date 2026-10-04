@@ -9,7 +9,7 @@ from aiogram.types import WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton
 # ==========================================
 # ВСТАВЬ СВОЙ ТОКЕН СЮДА (в кавычки):
 # ==========================================
-BOT_TOKEN = "8870858743:AAG8aS37A_SaJ6erWkJsJQ00Fdt-RpgLZG4"
+BOT_TOKEN = "8870858743:AAFpdYOLw-YOkYxyPq_CRO2fDBEWc_aDJCw"
 WEBAPP_URL = "https://example.com"
 
 bot = Bot(token=BOT_TOKEN)
