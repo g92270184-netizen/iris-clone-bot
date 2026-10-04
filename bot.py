@@ -14,7 +14,7 @@ from flask import Flask, Response, jsonify
 from flask_cors import CORS
 
 # ==========================================
-BOT_TOKEN = "8870858743:AAHpUh26oLWWA0SgEUPen2dMwbH4Tt8oiW4"
+BOT_TOKEN = "8870858743:AAEMxWrLtQR45PoScyI9531P47HQtIjKIlg"
 WEBAPP_URL = "https://iris-clone-bot.onrender.com"
 # ==========================================
 
