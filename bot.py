@@ -7,9 +7,9 @@ from aiogram.types import WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton
 # ==========================================
 # ВСТАВЬ СВОЙ ТОКЕН СЮДА (в кавычки):
 # ==========================================
-BOT_TOKEN = "8870858743:AAEAdhNrOXMwV8DQNw7Qh7RjqiWqNHJM2sc"
+BOT_TOKEN = "8870858743:AAF7qfm0NfIeHpBS_gqeoB-w4CN0FrOj5pI"
 
-WEBAPP_URL = "https://darkgram-1.onrender.com"
+WEBAPP_URL = "https://g92270184-netizen.github.io/iris-clone-bot/"
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
