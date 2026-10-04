@@ -6,7 +6,7 @@ from aiogram.filters import Command
 # ==========================================
 # ВСТАВЬ СВОЙ ТОКЕН СЮДА (в кавычки):
 # ==========================================
-BOT_TOKEN = "8996485032:AAEO5EZXN5fSmzThjq5fNUUVNrscigmwTnM"
+BOT_TOKEN = "8996485032:AAEko6kIg3vTcVRhy2ZqZgjzVLn6_Z8bEdg"
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
