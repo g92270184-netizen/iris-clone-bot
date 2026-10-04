@@ -9,8 +9,8 @@ from aiogram.types import WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton
 # ==========================================
 # ВСТАВЬ СВОЙ ТОКЕН СЮДА (в кавычки):
 # ==========================================
-BOT_TOKEN = "8870858743:AAFpdYOLw-YOkYxyPq_CRO2fDBEWc_aDJCw"
-WEBAPP_URL = "https://example.com"
+BOT_TOKEN = "8870858743:AAHPEwvDec6Uuxzh2d5Xt2dAd8C3IWqUyB0"
+WEBAPP_URL = 'https://darkgram-1.onrender.com'
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
