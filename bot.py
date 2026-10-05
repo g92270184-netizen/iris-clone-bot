@@ -6,12 +6,11 @@ from datetime import datetime
 from collections import Counter
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.types import InputRichBlockTable, InputRichBlockTableCell, InputRichBlockTableRow
 
 # ==========================================
 # ВСТАВЬ СВОЙ ТОКЕН СЮДА (в кавычки):
 # ==========================================
-BOT_TOKEN = "8996485032:AAE4gv25qmad99hpedX4OZ05_AqubeBhsos"
+BOT_TOKEN = "8996485032:AAGPnW4egsQclkRwHNErhEAV-W9L_Y49hrs"
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
@@ -131,7 +130,7 @@ async def cmd_me(message: types.Message):
     )
 
 # ==================================================
-#              ТАБЛИЦА ЛИДЕРОВ (RICH TABLE)
+#         ТАБЛИЦА ЛИДЕРОВ (текстовая, <pre>)
 # ==================================================
 @dp.message(Command("топ"))
 async def cmd_top(message: types.Message):
@@ -143,14 +142,9 @@ async def cmd_top(message: types.Message):
 
     sorted_users = sorted(chat_messages[chat_id].items(), key=lambda x: x[1], reverse=True)[:10]
 
-    # Заголовок таблицы
-    header = InputRichBlockTableRow(cells=[
-        InputRichBlockTableCell(text="Место", is_header=True),
-        InputRichBlockTableCell(text="Имя", is_header=True),
-        InputRichBlockTableCell(text="Сообщений", is_header=True),
-    ])
-
-    rows = [header]
+    text = "🏆 <b>Таблица лидеров</b>\n\n<pre>"
+    text += "Место  Имя           Сообщений\n"
+    text += "─────────────────────────────────\n"
 
     for i, (uid, count) in enumerate(sorted_users, 1):
         try:
@@ -159,40 +153,17 @@ async def cmd_top(message: types.Message):
         except:
             name = f"ID{uid}"
 
-        rows.append(InputRichBlockTableRow(cells=[
-            InputRichBlockTableCell(text=str(i)),
-            InputRichBlockTableCell(text=name),
-            InputRichBlockTableCell(text=str(count)),
-        ]))
+        if len(name) > 12:
+            name = name[:11] + "…"
 
-    table = InputRichBlockTable(rows=rows)
+        text += f"{i:<6} {name:<13} {count}\n"
 
-    try:
-        await message.answer_rich(
-            rich_message={
-                "blocks": [
-                    {"type": "paragraph", "text": "🏆 Таблица лидеров"},
-                    table,
-                ]
-            }
-        )
-    except Exception as e:
-        # Если Rich Table не работает — откат на текстовую таблицу
-        logging.error(f"Rich Table error: {e}")
-        text = "🏆 <b>Таблица лидеров</b>\n\n<pre>"
-        text += "Место  Имя           Сообщений\n"
-        text += "─────────────────────────────────\n"
-        for i, (uid, count) in enumerate(sorted_users, 1):
-            try:
-                member = await bot.get_chat_member(chat_id, uid)
-                name = member.user.first_name
-            except:
-                name = f"ID{uid}"
-            if len(name) > 12:
-                name = name[:11] + "…"
-            text += f"{i:<6} {name:<13} {count}\n"
-        text += "</pre>"
-        await message.answer(text, parse_mode="HTML")
+    text += "</pre>"
+
+    total = sum(chat_messages[chat_id].values())
+    text += f"\n📊 <b>Всего сообщений:</b> {total}"
+
+    await message.answer(text, parse_mode="HTML")
 
 # ==================================================
 #                    ТОП СЛОВ
