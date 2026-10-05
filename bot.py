@@ -2,7 +2,7 @@ import asyncio
 import logging
 import random
 import re
-from datetime import datetime, timedelta
+from datetime import datetime
 from collections import Counter
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
@@ -10,19 +10,19 @@ from aiogram.filters import Command
 # ==========================================
 # ВСТАВЬ СВОЙ ТОКЕН СЮДА (в кавычки):
 # ==========================================
-BOT_TOKEN = "8996485032:AAEiEH4fphS6uwbxTftrNVYRZalWHYOR3cI"
+BOT_TOKEN = "8996485032:AAHOyEdkuAArV1LzWDOoK2fKgpycbxvK2Jg"
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 # ========== БАЗА (в памяти) ==========
-users = {}          # {uid: {"messages": 0, "points": 0, "level": 1, "bio": "Не заполнено", "reg_date": "..."}}
-chat_messages = {}  # {chat_id: {uid: count}}
-chat_words = {}     # {chat_id: Counter слов}
-chat_daily = {}     # {chat_id: {date: count}}
-chat_hourly = {}    # {chat_id: {hour: count}}
-antibot = {}        # {chat_id: bool}
-user_names = {}     # {uid: "Имя"}
+users = {}
+chat_messages = {}
+chat_words = {}
+chat_daily = {}
+chat_hourly = {}
+antibot = {}
+user_names = {}
 
 # ========== УРОВНИ ==========
 def required_points(level):
@@ -45,7 +45,6 @@ def get_user(uid):
         }
     return users[uid]
 
-# ========== ПРОВЕРКИ ==========
 async def is_bot_admin(chat_id):
     try:
         member = await bot.get_chat_member(chat_id, bot.id)
@@ -67,7 +66,7 @@ async def is_user_admin(chat_id, user_id):
 async def cmd_start(message: types.Message):
     get_user(message.from_user.id)
     await message.answer(
-        "🌟 <b>Даркграм Бот</b> 🌟\n\n"
+        "🌟 <b>Darkgram Bot</b> 🌟\n\n"
         "📌 <b>Команды:</b>\n"
         "👤 /я — твой профиль\n"
         "📝 /анкета — заполнить анкету\n"
@@ -166,7 +165,6 @@ async def cmd_words(message: types.Message):
         await message.answer("🔤 Пока нет данных о словах.")
         return
 
-    # Убираем стоп-слова
     stop_words = {"и", "в", "на", "с", "по", "не", "что", "это", "я", "ты", "он", "она",
                   "а", "но", "да", "нет", "у", "к", "о", "за", "из", "то", "как", "так",
                   "же", "бы", "для", "от", "до", "мы", "вы", "они", "все", "был", "была"}
@@ -197,14 +195,11 @@ async def cmd_analytics(message: types.Message):
     avg = total // users_count if users_count else 0
 
     text = "📊 <b>Аналитика чата</b>\n\n"
-
-    # Общая статистика
     text += "📈 <b>Общее</b>\n"
     text += f"💬 Всего сообщений: {total}\n"
     text += f"👥 Участников: {users_count}\n"
     text += f"📊 Среднее на человека: {avg}\n\n"
 
-    # По дням
     if chat_id in chat_daily and chat_daily[chat_id]:
         text += "📅 <b>По дням</b>\n"
         sorted_days = sorted(chat_daily[chat_id].items(), reverse=True)[:5]
@@ -212,7 +207,6 @@ async def cmd_analytics(message: types.Message):
             text += f"  {day}: {cnt} сообщений\n"
         text += "\n"
 
-    # По часам
     if chat_id in chat_hourly and chat_hourly[chat_id]:
         text += "🕐 <b>Топ часов активности</b>\n"
         sorted_hours = sorted(chat_hourly[chat_id].items(), key=lambda x: x[1], reverse=True)[:3]
@@ -220,7 +214,6 @@ async def cmd_analytics(message: types.Message):
             text += f"  {hour}:00 — {cnt} сообщений\n"
         text += "\n"
 
-    # Топ-3 слова
     if chat_id in chat_words and chat_words[chat_id]:
         text += "🔤 <b>Топ-3 слова</b>\n"
         stop_words = {"и", "в", "на", "с", "по", "не", "что", "это", "я", "ты", "он", "она"}
@@ -263,7 +256,7 @@ async def cmd_antibot(message: types.Message):
 async def on_added_to_group(message: types.Message):
     await message.answer(
         "👋 <b>Привет!</b>\n\n"
-        "Я <b>Даркграм Бот</b> — считаю сообщения, слова и веду аналитику.\n\n"
+        "Я <b>Darkgram Bot</b> — считаю сообщения, слова и веду аналитику.\n\n"
         "⚠️ Назначьте меня админом.\n\n"
         "📊 /аналитика — статистика чата\n"
         "🔤 /слова — топ слов\n"
@@ -296,38 +289,36 @@ async def handle_message(message: types.Message):
         if not await is_bot_admin(chat_id):
             return
 
-    # Сохраняем имя
     user_names[uid] = message.from_user.first_name
 
-    # Счётчик сообщений
+    # Счётчик
     if chat_id not in chat_messages:
         chat_messages[chat_id] = {}
     if uid not in chat_messages[chat_id]:
         chat_messages[chat_id][uid] = 0
     chat_messages[chat_id][uid] += 1
 
-    # === АНАЛИТИКА: СЛОВА ===
+    # Аналитика: слова
     if chat_id not in chat_words:
         chat_words[chat_id] = Counter()
-    # Разбиваем на слова, убираем мусор
     words = re.findall(r'[а-яёa-z]+', text.lower())
     for word in words:
         if len(word) > 2:
             chat_words[chat_id][word] += 1
 
-    # === АНАЛИТИКА: ПО ДНЯМ ===
+    # Аналитика: по дням
     today = datetime.now().strftime("%d.%m")
     if chat_id not in chat_daily:
         chat_daily[chat_id] = {}
     chat_daily[chat_id][today] = chat_daily[chat_id].get(today, 0) + 1
 
-    # === АНАЛИТИКА: ПО ЧАСАМ ===
+    # Аналитика: по часам
     hour = datetime.now().hour
     if chat_id not in chat_hourly:
         chat_hourly[chat_id] = {}
     chat_hourly[chat_id][hour] = chat_hourly[chat_id].get(hour, 0) + 1
 
-    # === ОЧКИ И УРОВНИ ===
+    # Очки и уровни
     u = get_user(uid)
     u["messages"] += 1
     points_gain = random.randint(1, 25)
@@ -360,7 +351,7 @@ async def handle_message(message: types.Message):
 # ==================================================
 async def main():
     logging.basicConfig(level=logging.INFO)
-    print("Бот запущен...")
+    print("Darkgram Bot запущен...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
