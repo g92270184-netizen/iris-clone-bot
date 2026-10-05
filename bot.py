@@ -6,11 +6,13 @@ from datetime import datetime
 from collections import Counter
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
+from aiogram.types import InputRichBlockTable, InputRichBlockTableCell, InputRichBlockTableRow
 
 # ==========================================
 # ВСТАВЬ СВОЙ ТОКЕН СЮДА (в кавычки):
 # ==========================================
-BOT_TOKEN = "8996485032:AAFMPAyo81dTp-vFa5j305PxiHnwq0SwLvE"
+BOT_TOKEN = "8996485032:AAE4gv25qmad99hpedX4OZ05_AqubeBhsos"
+
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
@@ -69,7 +71,7 @@ async def cmd_start(message: types.Message):
         "📌 <b>Команды:</b>\n"
         "👤 /я — твой профиль\n"
         "📝 /анкета — заполнить анкету\n"
-        "🏆 /стат — таблица лидеров\n"
+        "🏆 /топ — таблица лидеров\n"
         "📊 /аналитика — аналитика чата\n"
         "🔤 /слова — топ слов в чате\n"
         "🤖 /антибот — глушилка ботов",
@@ -129,30 +131,68 @@ async def cmd_me(message: types.Message):
     )
 
 # ==================================================
-#                    ТАБЛИЦА ЛИДЕРОВ
+#              ТАБЛИЦА ЛИДЕРОВ (RICH TABLE)
 # ==================================================
-@dp.message(Command("стат"))
-async def cmd_stat(message: types.Message):
+@dp.message(Command("топ"))
+async def cmd_top(message: types.Message):
     chat_id = message.chat.id
+
     if chat_id not in chat_messages or not chat_messages[chat_id]:
-        await message.answer("🏆 Пока никто не писал.", parse_mode="HTML")
+        await message.answer("🏆 Пока никто не писал.")
         return
 
-    sorted_users = sorted(chat_messages[chat_id].items(), key=lambda x: x[1], reverse=True)
-    text = "🏆 <b>Таблица лидеров</b>\n\n<blockquote>"
-    medals = ["🥇", "🥈", "🥉"]
-    for i, (uid, count) in enumerate(sorted_users[:10]):
+    sorted_users = sorted(chat_messages[chat_id].items(), key=lambda x: x[1], reverse=True)[:10]
+
+    # Заголовок таблицы
+    header = InputRichBlockTableRow(cells=[
+        InputRichBlockTableCell(text="Место", is_header=True),
+        InputRichBlockTableCell(text="Имя", is_header=True),
+        InputRichBlockTableCell(text="Сообщений", is_header=True),
+    ])
+
+    rows = [header]
+
+    for i, (uid, count) in enumerate(sorted_users, 1):
         try:
             member = await bot.get_chat_member(chat_id, uid)
             name = member.user.first_name
         except:
             name = f"ID{uid}"
-        prefix = medals[i] if i < 3 else f"{i+1}."
-        text += f"{prefix} <b>{name}</b> — {count} 💬\n"
-    text += "</blockquote>\n"
-    total = sum(chat_messages[chat_id].values())
-    text += f"📊 <b>Всего сообщений:</b> {total}"
-    await message.answer(text, parse_mode="HTML")
+
+        rows.append(InputRichBlockTableRow(cells=[
+            InputRichBlockTableCell(text=str(i)),
+            InputRichBlockTableCell(text=name),
+            InputRichBlockTableCell(text=str(count)),
+        ]))
+
+    table = InputRichBlockTable(rows=rows)
+
+    try:
+        await message.answer_rich(
+            rich_message={
+                "blocks": [
+                    {"type": "paragraph", "text": "🏆 Таблица лидеров"},
+                    table,
+                ]
+            }
+        )
+    except Exception as e:
+        # Если Rich Table не работает — откат на текстовую таблицу
+        logging.error(f"Rich Table error: {e}")
+        text = "🏆 <b>Таблица лидеров</b>\n\n<pre>"
+        text += "Место  Имя           Сообщений\n"
+        text += "─────────────────────────────────\n"
+        for i, (uid, count) in enumerate(sorted_users, 1):
+            try:
+                member = await bot.get_chat_member(chat_id, uid)
+                name = member.user.first_name
+            except:
+                name = f"ID{uid}"
+            if len(name) > 12:
+                name = name[:11] + "…"
+            text += f"{i:<6} {name:<13} {count}\n"
+        text += "</pre>"
+        await message.answer(text, parse_mode="HTML")
 
 # ==================================================
 #                    ТОП СЛОВ
@@ -257,9 +297,9 @@ async def on_added_to_group(message: types.Message):
         "👋 <b>Привет!</b>\n\n"
         "Я <b>Darkgram Bot</b> — считаю сообщения, слова и веду аналитику.\n\n"
         "⚠️ Назначьте меня админом.\n\n"
-        "📊 /аналитика — статистика чата\n"
-        "🔤 /слова — топ слов\n"
-        "🏆 /стат — лидеры",
+        "🏆 /топ — таблица лидеров\n"
+        "📊 /аналитика — статистика\n"
+        "🔤 /слова — топ слов",
         parse_mode="HTML"
     )
 
@@ -275,7 +315,6 @@ async def handle_message(message: types.Message):
     if not text.strip():
         return
 
-    # Анти-бот
     if antibot.get(chat_id) and message.from_user.is_bot and uid != bot.id:
         try:
             await message.delete()
@@ -283,21 +322,18 @@ async def handle_message(message: types.Message):
             pass
         return
 
-    # Проверка админа
     if message.chat.type != "private":
         if not await is_bot_admin(chat_id):
             return
 
     user_names[uid] = message.from_user.first_name
 
-    # Счётчик
     if chat_id not in chat_messages:
         chat_messages[chat_id] = {}
     if uid not in chat_messages[chat_id]:
         chat_messages[chat_id][uid] = 0
     chat_messages[chat_id][uid] += 1
 
-    # Аналитика: слова
     if chat_id not in chat_words:
         chat_words[chat_id] = Counter()
     words = re.findall(r'[а-яёa-z]+', text.lower())
@@ -305,19 +341,16 @@ async def handle_message(message: types.Message):
         if len(word) > 2:
             chat_words[chat_id][word] += 1
 
-    # Аналитика: по дням
     today = datetime.now().strftime("%d.%m")
     if chat_id not in chat_daily:
         chat_daily[chat_id] = {}
     chat_daily[chat_id][today] = chat_daily[chat_id].get(today, 0) + 1
 
-    # Аналитика: по часам
     hour = datetime.now().hour
     if chat_id not in chat_hourly:
         chat_hourly[chat_id] = {}
     chat_hourly[chat_id][hour] = chat_hourly[chat_id].get(hour, 0) + 1
 
-    # Очки и уровни
     u = get_user(uid)
     u["messages"] += 1
     points_gain = random.randint(1, 25)
