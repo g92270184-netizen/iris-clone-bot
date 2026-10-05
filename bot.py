@@ -1,14 +1,16 @@
 import asyncio
 import logging
 import random
-from datetime import datetime
+import re
+from datetime import datetime, timedelta
+from collections import Counter
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 
 # ==========================================
 # ВСТАВЬ СВОЙ ТОКЕН СЮДА (в кавычки):
 # ==========================================
-BOT_TOKEN = "8996485032:AAFWzDc_JGDUHx5uJo-WU3RtBA2CH43UpAo"
+BOT_TOKEN = "8996485032:AAEiEH4fphS6uwbxTftrNVYRZalWHYOR3cI"
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
@@ -16,7 +18,11 @@ dp = Dispatcher()
 # ========== БАЗА (в памяти) ==========
 users = {}          # {uid: {"messages": 0, "points": 0, "level": 1, "bio": "Не заполнено", "reg_date": "..."}}
 chat_messages = {}  # {chat_id: {uid: count}}
-antibot = {}        # {chat_id: True/False} — включена ли глушилка ботов
+chat_words = {}     # {chat_id: Counter слов}
+chat_daily = {}     # {chat_id: {date: count}}
+chat_hourly = {}    # {chat_id: {hour: count}}
+antibot = {}        # {chat_id: bool}
+user_names = {}     # {uid: "Имя"}
 
 # ========== УРОВНИ ==========
 def required_points(level):
@@ -60,46 +66,17 @@ async def is_user_admin(chat_id, user_id):
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     get_user(message.from_user.id)
-
-    if message.chat.type != "private":
-        bot_admin = await is_bot_admin(message.chat.id)
-        if not bot_admin:
-            await message.answer(
-                "⚠️ <b>Внимание!</b>\n\n"
-                "Я работаю только если я <b>администратор</b> в этом чате.\n\n"
-                "📌 <b>Как назначить меня админом:</b>\n"
-                "1. Откройте настройки группы\n"
-                "2. Управление участниками\n"
-                "3. Найдите меня в списке\n"
-                "4. Назначьте администратором\n\n"
-                "После этого я смогу считать сообщения и выдавать уровни.",
-                parse_mode="HTML"
-            )
-            return
-
-        await message.answer(
-            "🌟 <b>Даркграм Бот</b> 🌟\n\n"
-            "Спасибо, что назначили меня админом! Теперь я работаю.\n\n"
-            "📌 <b>Что я умею:</b>\n"
-            "👤 /я — твой профиль\n"
-            "📝 /анкета — заполнить анкету\n"
-            "🏆 /стат — таблица лидеров\n"
-            "🤖 /антибот — глушилка ботов\n\n"
-            "💬 Просто общайся — за каждое сообщение получаешь очки!",
-            parse_mode="HTML"
-        )
-    else:
-        await message.answer(
-            "🌟 <b>Даркграм Бот</b> 🌟\n\n"
-            "Привет! Я слежу за активностью в чате и выдаю уровни.\n\n"
-            "📌 <b>Что я умею:</b>\n"
-            "👤 /я — твой профиль\n"
-            "📝 /анкета — заполнить анкету\n"
-            "🏆 /стат — таблица лидеров\n"
-            "🤖 /антибот — глушилка ботов\n\n"
-            "⚠️ <b>Важно:</b> Чтобы я работал в группе, назначьте меня <b>администратором</b>.",
-            parse_mode="HTML"
-        )
+    await message.answer(
+        "🌟 <b>Даркграм Бот</b> 🌟\n\n"
+        "📌 <b>Команды:</b>\n"
+        "👤 /я — твой профиль\n"
+        "📝 /анкета — заполнить анкету\n"
+        "🏆 /стат — таблица лидеров\n"
+        "📊 /аналитика — аналитика чата\n"
+        "🔤 /слова — топ слов в чате\n"
+        "🤖 /антибот — глушилка ботов",
+        parse_mode="HTML"
+    )
 
 # ==================================================
 #                    АНКЕТА
@@ -108,20 +85,11 @@ async def cmd_start(message: types.Message):
 async def cmd_anketa(message: types.Message):
     args = message.text.split(maxsplit=1)
     if len(args) < 2:
-        await message.answer(
-            "📝 <b>Анкета</b>\n\n"
-            "Напиши так:\n"
-            "<code>/анкета Твой текст о себе</code>",
-            parse_mode="HTML"
-        )
+        await message.answer("📝 Напиши: <code>/анкета Твой текст</code>", parse_mode="HTML")
         return
     u = get_user(message.from_user.id)
     u["bio"] = args[1]
-    await message.answer(
-        "✅ <b>Анкета обновлена!</b>\n\n"
-        f"📖 <i>{args[1]}</i>",
-        parse_mode="HTML"
-    )
+    await message.answer(f"✅ <b>Анкета обновлена!</b>\n\n📖 <i>{args[1]}</i>", parse_mode="HTML")
 
 # ==================================================
 #                    ПРОФИЛЬ
@@ -168,27 +136,11 @@ async def cmd_me(message: types.Message):
 @dp.message(Command("стат"))
 async def cmd_stat(message: types.Message):
     chat_id = message.chat.id
-
-    if message.chat.type != "private":
-        bot_admin = await is_bot_admin(chat_id)
-        if not bot_admin:
-            await message.answer(
-                "⚠️ <b>Я не админ в этом чате.</b>\n\n"
-                "Назначьте меня администратором, чтобы я мог вести статистику.",
-                parse_mode="HTML"
-            )
-            return
-
     if chat_id not in chat_messages or not chat_messages[chat_id]:
-        await message.answer(
-            "🏆 <b>Таблица лидеров</b>\n\n"
-            "😔 Пока никто не написал ни одного сообщения.",
-            parse_mode="HTML"
-        )
+        await message.answer("🏆 Пока никто не писал.", parse_mode="HTML")
         return
 
     sorted_users = sorted(chat_messages[chat_id].items(), key=lambda x: x[1], reverse=True)
-
     text = "🏆 <b>Таблица лидеров</b>\n\n<blockquote>"
     medals = ["🥇", "🥈", "🥉"]
     for i, (uid, count) in enumerate(sorted_users[:10]):
@@ -200,14 +152,86 @@ async def cmd_stat(message: types.Message):
         prefix = medals[i] if i < 3 else f"{i+1}."
         text += f"{prefix} <b>{name}</b> — {count} 💬\n"
     text += "</blockquote>\n"
-
     total = sum(chat_messages[chat_id].values())
-    text += f"📊 <b>Всего сообщений в чате:</b> {total}"
+    text += f"📊 <b>Всего сообщений:</b> {total}"
+    await message.answer(text, parse_mode="HTML")
+
+# ==================================================
+#                    ТОП СЛОВ
+# ==================================================
+@dp.message(Command("слова"))
+async def cmd_words(message: types.Message):
+    chat_id = message.chat.id
+    if chat_id not in chat_words or not chat_words[chat_id]:
+        await message.answer("🔤 Пока нет данных о словах.")
+        return
+
+    # Убираем стоп-слова
+    stop_words = {"и", "в", "на", "с", "по", "не", "что", "это", "я", "ты", "он", "она",
+                  "а", "но", "да", "нет", "у", "к", "о", "за", "из", "то", "как", "так",
+                  "же", "бы", "для", "от", "до", "мы", "вы", "они", "все", "был", "была"}
+
+    top = chat_words[chat_id].most_common(50)
+    filtered = [(w, c) for w, c in top if w not in stop_words and len(w) > 2][:15]
+
+    if not filtered:
+        await message.answer("🔤 Пока нет интересных слов.")
+        return
+
+    text = "🔤 <b>Топ слов в чате</b>\n\n<blockquote>"
+    for i, (word, count) in enumerate(filtered, 1):
+        text += f"{i}. <b>{word}</b> — {count} раз\n"
+    text += "</blockquote>"
 
     await message.answer(text, parse_mode="HTML")
 
 # ==================================================
-#                    АНТИ-БОТ (ГЛУШИЛКА)
+#                    АНАЛИТИКА
+# ==================================================
+@dp.message(Command("аналитика"))
+async def cmd_analytics(message: types.Message):
+    chat_id = message.chat.id
+
+    total = sum(chat_messages.get(chat_id, {}).values())
+    users_count = len(chat_messages.get(chat_id, {}))
+    avg = total // users_count if users_count else 0
+
+    text = "📊 <b>Аналитика чата</b>\n\n"
+
+    # Общая статистика
+    text += "📈 <b>Общее</b>\n"
+    text += f"💬 Всего сообщений: {total}\n"
+    text += f"👥 Участников: {users_count}\n"
+    text += f"📊 Среднее на человека: {avg}\n\n"
+
+    # По дням
+    if chat_id in chat_daily and chat_daily[chat_id]:
+        text += "📅 <b>По дням</b>\n"
+        sorted_days = sorted(chat_daily[chat_id].items(), reverse=True)[:5]
+        for day, cnt in sorted_days:
+            text += f"  {day}: {cnt} сообщений\n"
+        text += "\n"
+
+    # По часам
+    if chat_id in chat_hourly and chat_hourly[chat_id]:
+        text += "🕐 <b>Топ часов активности</b>\n"
+        sorted_hours = sorted(chat_hourly[chat_id].items(), key=lambda x: x[1], reverse=True)[:3]
+        for hour, cnt in sorted_hours:
+            text += f"  {hour}:00 — {cnt} сообщений\n"
+        text += "\n"
+
+    # Топ-3 слова
+    if chat_id in chat_words and chat_words[chat_id]:
+        text += "🔤 <b>Топ-3 слова</b>\n"
+        stop_words = {"и", "в", "на", "с", "по", "не", "что", "это", "я", "ты", "он", "она"}
+        top = [(w, c) for w, c in chat_words[chat_id].most_common(20) if w not in stop_words and len(w) > 2][:3]
+        for word, cnt in top:
+            text += f"  {word} — {cnt} раз\n"
+
+    await message.answer(text, parse_mode="HTML")
+
+# ==================================================
+#                    АНТИ-БОТ
 # ==================================================
 @dp.message(Command("антибот"))
 async def cmd_antibot(message: types.Message):
@@ -215,53 +239,40 @@ async def cmd_antibot(message: types.Message):
         await message.answer("Только в группе.")
         return
     if not await is_user_admin(message.chat.id, message.from_user.id):
-        await message.answer("🚫 Только админы могут включать анти-бот.")
+        await message.answer("🚫 Только админы.")
         return
 
     args = message.text.split()
     if len(args) < 2:
         status = "включён" if antibot.get(message.chat.id) else "выключен"
-        await message.answer(
-            f"🤖 <b>Анти-бот сейчас {status}</b>\n\n"
-            "Используй: <code>/антибот вкл</code> или <code>/антибот выкл</code>",
-            parse_mode="HTML"
-        )
+        await message.answer(f"🤖 Анти-бот сейчас <b>{status}</b>", parse_mode="HTML")
         return
 
     action = args[1].lower()
-    if action in ("вкл", "on", "да"):
+    if action in ("вкл", "on"):
         antibot[message.chat.id] = True
-        await message.answer(
-            "🤖 <b>Анти-бот включён</b>\n\n"
-            "Теперь сообщения от других ботов будут удаляться.",
-            parse_mode="HTML"
-        )
-    elif action in ("выкл", "off", "нет"):
+        await message.answer("🤖 <b>Анти-бот включён</b>", parse_mode="HTML")
+    elif action in ("выкл", "off"):
         antibot[message.chat.id] = False
         await message.answer("🤖 Анти-бот выключен.")
-    else:
-        await message.answer("Используй: вкл или выкл")
 
 # ==================================================
-#                    БОТ ДОБАВЛЕН В ГРУППУ
+#                    БОТ ДОБАВЛЕН
 # ==================================================
 @dp.message(lambda m: m.new_chat_members and any(bot.id == u.id for u in m.new_chat_members))
 async def on_added_to_group(message: types.Message):
     await message.answer(
-        "👋 <b>Всем привет!</b>\n\n"
-        "Я <b>Даркграм Бот</b> — слежу за активностью и выдаю уровни.\n\n"
-        "⚠️ <b>Чтобы я работал, назначьте меня администратором!</b>\n\n"
-        "📌 <b>Как это сделать:</b>\n"
-        "1. Настройки группы\n"
-        "2. Управление участниками\n"
-        "3. Найдите меня\n"
-        "4. Назначьте админом\n\n"
-        "После этого напишите /start",
+        "👋 <b>Привет!</b>\n\n"
+        "Я <b>Даркграм Бот</b> — считаю сообщения, слова и веду аналитику.\n\n"
+        "⚠️ Назначьте меня админом.\n\n"
+        "📊 /аналитика — статистика чата\n"
+        "🔤 /слова — топ слов\n"
+        "🏆 /стат — лидеры",
         parse_mode="HTML"
     )
 
 # ==================================================
-#                    СЧЁТЧИК + ОЧКИ + УРОВНИ
+#                    СЧЁТЧИК + АНАЛИТИКА
 # ==================================================
 @dp.message()
 async def handle_message(message: types.Message):
@@ -272,7 +283,7 @@ async def handle_message(message: types.Message):
     if not text.strip():
         return
 
-    # === ГЛУШИЛКА БОТОВ ===
+    # Анти-бот
     if antibot.get(chat_id) and message.from_user.is_bot and uid != bot.id:
         try:
             await message.delete()
@@ -280,48 +291,64 @@ async def handle_message(message: types.Message):
             pass
         return
 
-    # === ПРОВЕРКА: БОТ АДМИН? ===
+    # Проверка админа
     if message.chat.type != "private":
-        bot_admin = await is_bot_admin(chat_id)
-        if not bot_admin:
+        if not await is_bot_admin(chat_id):
             return
 
-    # Считаем сообщение
+    # Сохраняем имя
+    user_names[uid] = message.from_user.first_name
+
+    # Счётчик сообщений
     if chat_id not in chat_messages:
         chat_messages[chat_id] = {}
     if uid not in chat_messages[chat_id]:
         chat_messages[chat_id][uid] = 0
     chat_messages[chat_id][uid] += 1
 
-    # Очки и уровни
+    # === АНАЛИТИКА: СЛОВА ===
+    if chat_id not in chat_words:
+        chat_words[chat_id] = Counter()
+    # Разбиваем на слова, убираем мусор
+    words = re.findall(r'[а-яёa-z]+', text.lower())
+    for word in words:
+        if len(word) > 2:
+            chat_words[chat_id][word] += 1
+
+    # === АНАЛИТИКА: ПО ДНЯМ ===
+    today = datetime.now().strftime("%d.%m")
+    if chat_id not in chat_daily:
+        chat_daily[chat_id] = {}
+    chat_daily[chat_id][today] = chat_daily[chat_id].get(today, 0) + 1
+
+    # === АНАЛИТИКА: ПО ЧАСАМ ===
+    hour = datetime.now().hour
+    if chat_id not in chat_hourly:
+        chat_hourly[chat_id] = {}
+    chat_hourly[chat_id][hour] = chat_hourly[chat_id].get(hour, 0) + 1
+
+    # === ОЧКИ И УРОВНИ ===
     u = get_user(uid)
     u["messages"] += 1
     points_gain = random.randint(1, 25)
     u["points"] += points_gain
 
-    # Повышение уровня
     new_level = get_level(u["points"])
     if new_level > u["level"]:
         u["level"] = new_level
-
         phrases = {
-            2: "🌱 Ты только начинаешь свой путь!",
-            3: "🔥 Ты набираешь обороты!",
-            5: "💪 Пятый уровень, неплохо!",
-            10: "🏅 Десятый уровень! Ты в топе!",
-            15: "🚀 Пятнадцатый! Космос!",
-            20: "👑 Двадцатый уровень! Легенда!",
-            30: "💎 Тридцатый уровень! Бриллиант!",
-            40: "🔥 Сороковой! Ты неугасим!",
-            50: "🌟 ПЯТИДЕСЯТЫЙ УРОВЕНЬ! ТЫ БОГ ЧАТА!"
+            2: "🌱 Ты только начинаешь!",
+            3: "🔥 Набираешь обороты!",
+            5: "💪 Пятый уровень!",
+            10: "🏅 Десятый уровень!",
+            20: "👑 Легенда!",
+            50: "🌟 ТЫ БОГ ЧАТА!"
         }
-        phrase = phrases.get(new_level, "✨ Продолжай в том же духе!")
-
+        phrase = phrases.get(new_level, "✨ Продолжай!")
         try:
             await message.answer(
-                "🎉 <b>Новый уровень!</b> 🎉\n\n"
-                f"🎖 <b>{message.from_user.first_name}</b> достиг <b>{new_level}</b> уровня!\n\n"
-                f"✨ Очков: <b>{u['points']}</b>\n"
+                "🎉 <b>Новый уровень!</b>\n\n"
+                f"🎖 <b>{message.from_user.first_name}</b> — <b>{new_level}</b>!\n\n"
                 f"{phrase}",
                 parse_mode="HTML"
             )
