@@ -1,63 +1,34 @@
 import asyncio
 import logging
 import random
-import re
-from datetime import datetime
-from collections import Counter
+from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # ==========================================
 # ВСТАВЬ СВОЙ ТОКЕН СЮДА (в кавычки):
 # ==========================================
-BOT_TOKEN = "8996485032:AAGPnW4egsQclkRwHNErhEAV-W9L_Y49hrs"
+BOT_TOKEN = "8996485032:AAESquRYMN9yfO1nP-lLN-kh3ciLKs9-ZyI"
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# ========== БАЗА (в памяти) ==========
+# ========== БАЗА ==========
 users = {}
 chat_messages = {}
-chat_words = {}
-chat_daily = {}
-chat_hourly = {}
-antibot = {}
-user_names = {}
-
-# ========== УРОВНИ ==========
-def required_points(level):
-    return 250 * level * (level + 1)
-
-def get_level(points):
-    level = 1
-    while points >= required_points(level):
-        level += 1
-    return level - 1 if level > 1 else 1
+pending_duels = {}  # {duel_id: {...}}
 
 def get_user(uid):
     if uid not in users:
         users[uid] = {
+            "iriski": 100,
             "messages": 0,
-            "points": 0,
-            "level": 1,
-            "bio": "Не заполнено",
-            "reg_date": datetime.now().strftime("%d.%m.%Y")
+            "wins": 0,
+            "losses": 0,
+            "last_bonus": None
         }
     return users[uid]
-
-async def is_bot_admin(chat_id):
-    try:
-        member = await bot.get_chat_member(chat_id, bot.id)
-        return member.status in ("administrator", "creator")
-    except:
-        return False
-
-async def is_user_admin(chat_id, user_id):
-    try:
-        member = await bot.get_chat_member(chat_id, user_id)
-        return member.status in ("administrator", "creator")
-    except:
-        return False
 
 # ==================================================
 #                    СТАРТ
@@ -66,295 +37,442 @@ async def is_user_admin(chat_id, user_id):
 async def cmd_start(message: types.Message):
     get_user(message.from_user.id)
     await message.answer(
-        "🌟 <b>Darkgram Bot</b> 🌟\n\n"
-        "📌 <b>Команды:</b>\n"
-        "👤 /я — твой профиль\n"
-        "📝 /анкета — заполнить анкету\n"
-        "🏆 /топ — таблица лидеров\n"
-        "📊 /аналитика — аналитика чата\n"
-        "🔤 /слова — топ слов в чате\n"
-        "🤖 /антибот — глушилка ботов",
+        "🎰 <b>Darkgram Casino</b> 🎰\n\n"
+        "💰 <b>Экономика:</b>\n"
+        "  /баланс — сколько ирисок\n"
+        "  /бонус — ежедневный бонус\n"
+        "  /топ — топ по ирискам\n"
+        "  /статистика — общая статистика\n\n"
+        "🎲 <b>Игры:</b>\n"
+        "  /кубик 100 — ставка на кубик\n"
+        "  /слоты 100 — игровые автоматы\n"
+        "  /рулетка 100 красное — ставка на цвет\n\n"
+        "⚔️ <b>Дуэли:</b>\n"
+        "  /дуэль @юзернейм 100 — вызвать игрока\n\n"
+        "💬 За каждое сообщение — 1-10 ирисок",
         parse_mode="HTML"
     )
 
 # ==================================================
-#                    АНКЕТА
+#                    БАЛАНС
 # ==================================================
-@dp.message(Command("анкета"))
-async def cmd_anketa(message: types.Message):
-    args = message.text.split(maxsplit=1)
-    if len(args) < 2:
-        await message.answer("📝 Напиши: <code>/анкета Твой текст</code>", parse_mode="HTML")
-        return
+@dp.message(Command("баланс"))
+async def cmd_balance(message: types.Message):
     u = get_user(message.from_user.id)
-    u["bio"] = args[1]
-    await message.answer(f"✅ <b>Анкета обновлена!</b>\n\n📖 <i>{args[1]}</i>", parse_mode="HTML")
-
-# ==================================================
-#                    ПРОФИЛЬ
-# ==================================================
-@dp.message(Command("я"))
-async def cmd_me(message: types.Message):
-    u = get_user(message.from_user.id)
-    next_level = u["level"] + 1
-    need = required_points(next_level)
-    left = need - u["points"]
-    username = f"@{message.from_user.username}" if message.from_user.username else "не указан"
-    chat_id = message.chat.id
-    chat_name = message.chat.title or "Личка"
-    chat_count = chat_messages.get(chat_id, {}).get(message.from_user.id, 0)
-
-    stars = "⭐" * min(u["level"], 10)
-    if u["level"] > 10:
-        stars += f" +{u['level'] - 10}"
-
     await message.answer(
-        "👤 <b>Твой профиль</b>\n\n"
-        f"🏷 <b>Имя:</b> {message.from_user.first_name}\n"
-        f"🔗 <b>Юзернейм:</b> {username}\n"
-        f"🆔 <b>ID:</b> <code>{message.from_user.id}</code>\n\n"
-        "📊 <b>Прогресс</b>\n"
-        f"🎖 <b>Уровень {u['level']}</b> {stars}\n"
-        f"✨ <b>Очки:</b> {u['points']} / {need}\n"
-        f"🎯 <b>До следующего:</b> {left}\n\n"
-        "📈 <b>Статистика</b>\n"
-        f"💬 Всего сообщений: {u['messages']}\n"
-        f"📍 В этом чате: {chat_count}\n\n"
-        "💬 <b>Этот чат</b>\n"
-        f"📛 {chat_name}\n"
-        f"🆔 <code>{chat_id}</code>\n\n"
-        "📝 <b>Анкета</b>\n"
-        f"{u['bio']}\n\n"
-        f"📅 <i>В боте с {u['reg_date']}</i>",
+        "💰 <b>Твой баланс</b>\n\n"
+        f"💎 Ирисок: <b>{u['iriski']}</b>\n"
+        f"🏆 Побед: {u['wins']}\n"
+        f"💀 Поражений: {u['losses']}",
         parse_mode="HTML"
     )
 
 # ==================================================
-#         ТАБЛИЦА ЛИДЕРОВ (текстовая, <pre>)
+#                    БОНУС
+# ==================================================
+@dp.message(Command("бонус"))
+async def cmd_bonus(message: types.Message):
+    u = get_user(message.from_user.id)
+    now = datetime.now()
+
+    if u["last_bonus"]:
+        diff = now - u["last_bonus"]
+        if diff < timedelta(hours=24):
+            left = timedelta(hours=24) - diff
+            hours = left.seconds // 3600
+            minutes = (left.seconds % 3600) // 60
+            await message.answer(f"⏰ Следующий бонус через: <b>{hours}ч {minutes}мин</b>", parse_mode="HTML")
+            return
+
+    bonus = random.randint(100, 500)
+    u["iriski"] += bonus
+    u["last_bonus"] = now
+    await message.answer(
+        "🎁 <b>Ежедневный бонус!</b>\n\n"
+        f"💎 Получено: <b>+{bonus}</b> ирисок\n"
+        f"💰 Баланс: <b>{u['iriski']}</b>",
+        parse_mode="HTML"
+    )
+
+# ==================================================
+#                    ТОП
 # ==================================================
 @dp.message(Command("топ"))
 async def cmd_top(message: types.Message):
-    chat_id = message.chat.id
-
-    if chat_id not in chat_messages or not chat_messages[chat_id]:
-        await message.answer("🏆 Пока никто не писал.")
+    if not users:
+        await message.answer("🏆 Пока нет игроков.")
         return
 
-    sorted_users = sorted(chat_messages[chat_id].items(), key=lambda x: x[1], reverse=True)[:10]
+    sorted_users = sorted(users.items(), key=lambda x: x[1]["iriski"], reverse=True)[:10]
 
-    text = "🏆 <b>Таблица лидеров</b>\n\n<pre>"
-    text += "Место  Имя           Сообщений\n"
-    text += "─────────────────────────────────\n"
+    text = "🏆 <b>Топ богачей</b>\n\n<pre>"
+    text += "Место  Имя           Ириски\n"
+    text += "─────────────────────────────\n"
 
-    for i, (uid, count) in enumerate(sorted_users, 1):
+    for i, (uid, data) in enumerate(sorted_users, 1):
         try:
-            member = await bot.get_chat_member(chat_id, uid)
-            name = member.user.first_name
+            member = await bot.get_chat(uid)
+            name = member.first_name
         except:
             name = f"ID{uid}"
 
         if len(name) > 12:
             name = name[:11] + "…"
 
-        text += f"{i:<6} {name:<13} {count}\n"
+        text += f"{i:<6} {name:<13} {data['iriski']}\n"
 
     text += "</pre>"
-
-    total = sum(chat_messages[chat_id].values())
-    text += f"\n📊 <b>Всего сообщений:</b> {total}"
-
     await message.answer(text, parse_mode="HTML")
 
 # ==================================================
-#                    ТОП СЛОВ
+#                    СТАТИСТИКА
 # ==================================================
-@dp.message(Command("слова"))
-async def cmd_words(message: types.Message):
-    chat_id = message.chat.id
-    if chat_id not in chat_words or not chat_words[chat_id]:
-        await message.answer("🔤 Пока нет данных о словах.")
+@dp.message(Command("статистика"))
+async def cmd_stats(message: types.Message):
+    if not users:
+        await message.answer("📊 Пока нет данных.")
         return
 
-    stop_words = {"и", "в", "на", "с", "по", "не", "что", "это", "я", "ты", "он", "она",
-                  "а", "но", "да", "нет", "у", "к", "о", "за", "из", "то", "как", "так",
-                  "же", "бы", "для", "от", "до", "мы", "вы", "они", "все", "был", "была"}
+    total_iriski = sum(u["iriski"] for u in users.values())
+    total_wins = sum(u["wins"] for u in users.values())
+    total_losses = sum(u["losses"] for u in users.values())
 
-    top = chat_words[chat_id].most_common(50)
-    filtered = [(w, c) for w, c in top if w not in stop_words and len(w) > 2][:15]
-
-    if not filtered:
-        await message.answer("🔤 Пока нет интересных слов.")
-        return
-
-    text = "🔤 <b>Топ слов в чате</b>\n\n<blockquote>"
-    for i, (word, count) in enumerate(filtered, 1):
-        text += f"{i}. <b>{word}</b> — {count} раз\n"
-    text += "</blockquote>"
-
-    await message.answer(text, parse_mode="HTML")
-
-# ==================================================
-#                    АНАЛИТИКА
-# ==================================================
-@dp.message(Command("аналитика"))
-async def cmd_analytics(message: types.Message):
-    chat_id = message.chat.id
-
-    total = sum(chat_messages.get(chat_id, {}).values())
-    users_count = len(chat_messages.get(chat_id, {}))
-    avg = total // users_count if users_count else 0
-
-    text = "📊 <b>Аналитика чата</b>\n\n"
-    text += "📈 <b>Общее</b>\n"
-    text += f"💬 Всего сообщений: {total}\n"
-    text += f"👥 Участников: {users_count}\n"
-    text += f"📊 Среднее на человека: {avg}\n\n"
-
-    if chat_id in chat_daily and chat_daily[chat_id]:
-        text += "📅 <b>По дням</b>\n"
-        sorted_days = sorted(chat_daily[chat_id].items(), reverse=True)[:5]
-        for day, cnt in sorted_days:
-            text += f"  {day}: {cnt} сообщений\n"
-        text += "\n"
-
-    if chat_id in chat_hourly and chat_hourly[chat_id]:
-        text += "🕐 <b>Топ часов активности</b>\n"
-        sorted_hours = sorted(chat_hourly[chat_id].items(), key=lambda x: x[1], reverse=True)[:3]
-        for hour, cnt in sorted_hours:
-            text += f"  {hour}:00 — {cnt} сообщений\n"
-        text += "\n"
-
-    if chat_id in chat_words and chat_words[chat_id]:
-        text += "🔤 <b>Топ-3 слова</b>\n"
-        stop_words = {"и", "в", "на", "с", "по", "не", "что", "это", "я", "ты", "он", "она"}
-        top = [(w, c) for w, c in chat_words[chat_id].most_common(20) if w not in stop_words and len(w) > 2][:3]
-        for word, cnt in top:
-            text += f"  {word} — {cnt} раз\n"
-
-    await message.answer(text, parse_mode="HTML")
-
-# ==================================================
-#                    АНТИ-БОТ
-# ==================================================
-@dp.message(Command("антибот"))
-async def cmd_antibot(message: types.Message):
-    if message.chat.type == "private":
-        await message.answer("Только в группе.")
-        return
-    if not await is_user_admin(message.chat.id, message.from_user.id):
-        await message.answer("🚫 Только админы.")
-        return
-
-    args = message.text.split()
-    if len(args) < 2:
-        status = "включён" if antibot.get(message.chat.id) else "выключен"
-        await message.answer(f"🤖 Анти-бот сейчас <b>{status}</b>", parse_mode="HTML")
-        return
-
-    action = args[1].lower()
-    if action in ("вкл", "on"):
-        antibot[message.chat.id] = True
-        await message.answer("🤖 <b>Анти-бот включён</b>", parse_mode="HTML")
-    elif action in ("выкл", "off"):
-        antibot[message.chat.id] = False
-        await message.answer("🤖 Анти-бот выключен.")
-
-# ==================================================
-#                    БОТ ДОБАВЛЕН
-# ==================================================
-@dp.message(lambda m: m.new_chat_members and any(bot.id == u.id for u in m.new_chat_members))
-async def on_added_to_group(message: types.Message):
     await message.answer(
-        "👋 <b>Привет!</b>\n\n"
-        "Я <b>Darkgram Bot</b> — считаю сообщения, слова и веду аналитику.\n\n"
-        "⚠️ Назначьте меня админом.\n\n"
-        "🏆 /топ — таблица лидеров\n"
-        "📊 /аналитика — статистика\n"
-        "🔤 /слова — топ слов",
+        "📊 <b>Общая статистика казино</b>\n\n"
+        f"👥 Игроков: <b>{len(users)}</b>\n"
+        f"💎 Всего ирисок: <b>{total_iriski}</b>\n\n"
+        "🎮 <b>Игры</b>\n"
+        f"🏆 Побед: {total_wins}\n"
+        f"💀 Поражений: {total_losses}",
         parse_mode="HTML"
     )
 
 # ==================================================
-#                    СЧЁТЧИК + АНАЛИТИКА
+#                    КУБИК
 # ==================================================
-@dp.message()
-async def handle_message(message: types.Message):
-    chat_id = message.chat.id
-    uid = message.from_user.id
-    text = message.text or ""
+@dp.message(Command("кубик"))
+async def cmd_dice(message: types.Message):
+    u = get_user(message.from_user.id)
+    args = message.text.split()
 
-    if not text.strip():
+    if len(args) < 2:
+        await message.answer("🎲 Используй: <code>/кубик 100</code>", parse_mode="HTML")
         return
 
-    if antibot.get(chat_id) and message.from_user.is_bot and uid != bot.id:
+    try:
+        bet = int(args[1])
+    except:
+        await message.answer("❌ Ставка должна быть числом.")
+        return
+
+    if bet <= 0 or u["iriski"] < bet:
+        await message.answer(f"❌ Недостаточно ирисок. У тебя: {u['iriski']}")
+        return
+
+    player = random.randint(1, 6)
+    bot_roll = random.randint(1, 6)
+
+    if player > bot_roll:
+        u["iriski"] += bet
+        u["wins"] += 1
+        result = f"🏆 <b>Победа!</b>\n\n🎲 Ты: {player}\n🎲 Бот: {bot_roll}\n\n💰 +{bet}\n💎 Баланс: {u['iriski']}"
+    elif player < bot_roll:
+        u["iriski"] -= bet
+        u["losses"] += 1
+        result = f"💀 <b>Проигрыш</b>\n\n🎲 Ты: {player}\n🎲 Бот: {bot_roll}\n\n💸 -{bet}\n💎 Баланс: {u['iriski']}"
+    else:
+        result = f"🤝 <b>Ничья!</b>\n\n🎲 Ты: {player}\n🎲 Бот: {bot_roll}"
+
+    await message.answer(result, parse_mode="HTML")
+
+# ==================================================
+#                    СЛОТЫ
+# ==================================================
+@dp.message(Command("слоты"))
+async def cmd_slots(message: types.Message):
+    u = get_user(message.from_user.id)
+    args = message.text.split()
+
+    if len(args) < 2:
+        await message.answer("🎰 Используй: <code>/слоты 100</code>", parse_mode="HTML")
+        return
+
+    try:
+        bet = int(args[1])
+    except:
+        await message.answer("❌ Ставка должна быть числом.")
+        return
+
+    if bet <= 0 or u["iriski"] < bet:
+        await message.answer(f"❌ Недостаточно ирисок. У тебя: {u['iriski']}")
+        return
+
+    symbols = ["🍒", "🍋", "🍊", "🍇", "💎", "7️⃣"]
+    s1, s2, s3 = random.choice(symbols), random.choice(symbols), random.choice(symbols)
+
+    if s1 == s2 == s3:
+        win = bet * 10 if s1 == "7️⃣" else (bet * 5 if s1 == "💎" else bet * 3)
+        u["iriski"] += win
+        u["wins"] += 1
+        text = f"💥 <b>ДЖЕКПОТ!</b>\n\n{s1} | {s2} | {s3}\n\n💰 +{win}\n💎 Баланс: {u['iriski']}"
+    elif s1 == s2 or s2 == s3 or s1 == s3:
+        win = bet * 2
+        u["iriski"] += win - bet
+        u["wins"] += 1
+        text = f"✨ <b>Два совпадения!</b>\n\n{s1} | {s2} | {s3}\n\n💰 +{win - bet}\n💎 Баланс: {u['iriski']}"
+    else:
+        u["iriski"] -= bet
+        u["losses"] += 1
+        text = f"💀 <b>Проигрыш</b>\n\n{s1} | {s2} | {s3}\n\n💸 -{bet}\n💎 Баланс: {u['iriski']}"
+
+    await message.answer(text, parse_mode="HTML")
+
+# ==================================================
+#                    РУЛЕТКА
+# ==================================================
+@dp.message(Command("рулетка"))
+async def cmd_roulette(message: types.Message):
+    u = get_user(message.from_user.id)
+    args = message.text.split()
+
+    if len(args) < 3:
+        await message.answer("🎡 Используй: <code>/рулетка 100 красное</code>", parse_mode="HTML")
+        return
+
+    try:
+        bet = int(args[1])
+    except:
+        await message.answer("❌ Ставка должна быть числом.")
+        return
+
+    color = args[2].lower().replace("ё", "е")
+    if color not in ("красное", "черное"):
+        await message.answer("❌ Цвет: красное или чёрное")
+        return
+
+    if bet <= 0 or u["iriski"] < bet:
+        await message.answer(f"❌ Недостаточно ирисок. У тебя: {u['iriski']}")
+        return
+
+    result = random.choice(["красное", "черное"])
+
+    if result == color:
+        u["iriski"] += bet
+        u["wins"] += 1
+        text = f"🏆 <b>Победа!</b>\n\n🎡 Выпало: {result}\n\n💰 +{bet}\n💎 Баланс: {u['iriski']}"
+    else:
+        u["iriski"] -= bet
+        u["losses"] += 1
+        text = f"💀 <b>Проигрыш</b>\n\n🎡 Выпало: {result}\n\n💸 -{bet}\n💎 Баланс: {u['iriski']}"
+
+    await message.answer(text, parse_mode="HTML")
+
+# ==================================================
+#                    ДУЭЛЬ (PvP)
+# ==================================================
+@dp.message(Command("дуэль"))
+async def cmd_duel(message: types.Message):
+    args = message.text.split()
+    if len(args) < 3:
+        await message.answer(
+            "⚔️ <b>Как вызвать на дуэль:</b>\n"
+            "<code>/дуэль @юзернейм 100</code>",
+            parse_mode="HTML"
+        )
+        return
+
+    # Парсим юзернейм
+    target_username = args[1].lstrip("@")
+    try:
+        bet = int(args[2])
+    except:
+        await message.answer("❌ Ставка должна быть числом.")
+        return
+
+    challenger = get_user(message.from_user.id)
+    if challenger["iriski"] < bet:
+        await message.answer(f"❌ Недостаточно ирисок. У тебя: {challenger['iriski']}")
+        return
+
+    if bet <= 0:
+        await message.answer("❌ Ставка должна быть больше 0.")
+        return
+
+    # Ищем игрока по юзернейму
+    target_id = None
+    for uid, u in users.items():
         try:
-            await message.delete()
+            member = await bot.get_chat(uid)
+            if member.username and member.username.lower() == target_username.lower():
+                target_id = uid
+                break
         except:
-            pass
+            continue
+
+    if not target_id:
+        # Пробуем найти через chat_members
+        await message.answer(f"❌ Игрок @{target_username} не найден. Убедись, что он писал в чат.")
         return
 
-    if message.chat.type != "private":
-        if not await is_bot_admin(chat_id):
-            return
+    if target_id == message.from_user.id:
+        await message.answer("❌ Нельзя вызвать самого себя.")
+        return
 
-    user_names[uid] = message.from_user.first_name
+    target = get_user(target_id)
+    if target["iriski"] < bet:
+        await message.answer(f"❌ У игрока @{target_username} недостаточно ирисок.")
+        return
 
-    if chat_id not in chat_messages:
-        chat_messages[chat_id] = {}
-    if uid not in chat_messages[chat_id]:
-        chat_messages[chat_id][uid] = 0
-    chat_messages[chat_id][uid] += 1
+    # Создаём дуэль
+    duel_id = f"{message.from_user.id}_{target_id}_{int(datetime.now().timestamp())}"
+    pending_duels[duel_id] = {
+        "challenger_id": message.from_user.id,
+        "challenger_name": message.from_user.first_name,
+        "target_id": target_id,
+        "target_username": target_username,
+        "bet": bet,
+        "chat_id": message.chat.id,
+        "created": datetime.now()
+    }
 
-    if chat_id not in chat_words:
-        chat_words[chat_id] = Counter()
-    words = re.findall(r'[а-яёa-z]+', text.lower())
-    for word in words:
-        if len(word) > 2:
-            chat_words[chat_id][word] += 1
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Принять", callback_data=f"duel_accept_{duel_id}"),
+            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"duel_decline_{duel_id}")
+        ]
+    ])
 
-    today = datetime.now().strftime("%d.%m")
-    if chat_id not in chat_daily:
-        chat_daily[chat_id] = {}
-    chat_daily[chat_id][today] = chat_daily[chat_id].get(today, 0) + 1
+    # Отправляем в чат
+    await message.answer(
+        f"⚔️ <b>Вызов на дуэль!</b>\n\n"
+        f"🎯 <b>Кто вызвал:</b> {message.from_user.first_name}\n"
+        f"🎯 <b>Кого вызвали:</b> @{target_username}\n"
+        f"💎 <b>Ставка:</b> {bet} ирисок\n\n"
+        f"⏰ У @{target_username} есть <b>5 минут</b>, чтобы принять или отклонить.",
+        parse_mode="HTML",
+        reply_markup=kb
+    )
 
-    hour = datetime.now().hour
-    if chat_id not in chat_hourly:
-        chat_hourly[chat_id] = {}
-    chat_hourly[chat_id][hour] = chat_hourly[chat_id].get(hour, 0) + 1
+    # Автоотмена через 5 минут
+    asyncio.create_task(duel_timeout(duel_id))
 
-    u = get_user(uid)
-    u["messages"] += 1
-    points_gain = random.randint(1, 25)
-    u["points"] += points_gain
-
-    new_level = get_level(u["points"])
-    if new_level > u["level"]:
-        u["level"] = new_level
-        phrases = {
-            2: "🌱 Ты только начинаешь!",
-            3: "🔥 Набираешь обороты!",
-            5: "💪 Пятый уровень!",
-            10: "🏅 Десятый уровень!",
-            20: "👑 Легенда!",
-            50: "🌟 ТЫ БОГ ЧАТА!"
-        }
-        phrase = phrases.get(new_level, "✨ Продолжай!")
+async def duel_timeout(duel_id):
+    await asyncio.sleep(300)  # 5 минут
+    if duel_id in pending_duels:
+        duel = pending_duels.pop(duel_id)
         try:
-            await message.answer(
-                "🎉 <b>Новый уровень!</b>\n\n"
-                f"🎖 <b>{message.from_user.first_name}</b> — <b>{new_level}</b>!\n\n"
-                f"{phrase}",
+            await bot.send_message(
+                duel["chat_id"],
+                f"⏰ <b>Дуэль отменена</b>\n\n@{duel['target_username']} не ответил за 5 минут.",
                 parse_mode="HTML"
             )
         except:
             pass
 
 # ==================================================
+#                  ОБРАБОТКА КНОПОК ДУЭЛИ
+# ==================================================
+@dp.callback_query(lambda c: c.data.startswith("duel_accept_"))
+async def cb_duel_accept(call: types.CallbackQuery):
+    duel_id = call.data.replace("duel_accept_", "")
+    if duel_id not in pending_duels:
+        await call.answer("⏰ Дуэль уже истекла.", show_alert=True)
+        return
+
+    duel = pending_duels.pop(duel_id)
+
+    # Проверяем, что нажал именно тот, кого вызвали
+    if call.from_user.id != duel["target_id"]:
+        await call.answer("❌ Это не твоя дуэль!", show_alert=True)
+        pending_duels[duel_id] = duel
+        return
+
+    challenger = get_user(duel["challenger_id"])
+    target = get_user(duel["target_id"])
+    bet = duel["bet"]
+
+    if challenger["iriski"] < bet or target["iriski"] < bet:
+        await call.message.edit_text("❌ У одного из игроков недостаточно ирисок.")
+        return
+
+    # Бросок кубиков
+    roll1 = random.randint(1, 6)
+    roll2 = random.randint(1, 6)
+
+    if roll1 > roll2:
+        winner_id = duel["challenger_id"]
+        winner_name = duel["challenger_name"]
+        loser_id = duel["target_id"]
+    elif roll2 > roll1:
+        winner_id = duel["target_id"]
+        winner_name = f"@{duel['target_username']}"
+        loser_id = duel["challenger_id"]
+    else:
+        await call.message.edit_text(
+            f"🤝 <b>Ничья!</b>\n\n"
+            f"{duel['challenger_name']}: 🎲 {roll1}\n"
+            f"@{duel['target_username']}: 🎲 {roll2}\n\n"
+            f"💎 Ставки возвращены.",
+            parse_mode="HTML"
+        )
+        return
+
+    # Переводим ириски
+    get_user(winner_id)["iriski"] += bet
+    get_user(loser_id)["iriski"] -= bet
+    get_user(winner_id)["wins"] += 1
+    get_user(loser_id)["losses"] += 1
+
+    await call.message.edit_text(
+        f"⚔️ <b>Дуэль завершена!</b>\n\n"
+        f"{duel['challenger_name']}: 🎲 {roll1}\n"
+        f"@{duel['target_username']}: 🎲 {roll2}\n\n"
+        f"🏆 <b>Победитель:</b> {winner_name}\n"
+        f"💰 Выигрыш: <b>{bet}</b> ирисок",
+        parse_mode="HTML"
+    )
+
+@dp.callback_query(lambda c: c.data.startswith("duel_decline_"))
+async def cb_duel_decline(call: types.CallbackQuery):
+    duel_id = call.data.replace("duel_decline_", "")
+    if duel_id not in pending_duels:
+        await call.answer("⏰ Дуэль уже истекла.", show_alert=True)
+        return
+
+    duel = pending_duels.pop(duel_id)
+
+    if call.from_user.id != duel["target_id"]:
+        await call.answer("❌ Это не твоя дуэль!", show_alert=True)
+        pending_duels[duel_id] = duel
+        return
+
+    await call.message.edit_text(
+        f"❌ <b>Дуэль отклонена</b>\n\n"
+        f"@{duel['target_username']} отказался от вызова.",
+        parse_mode="HTML"
+    )
+
+# ==================================================
+#                    СЧЁТЧИК
+# ==================================================
+@dp.message()
+async def handle_message(message: types.Message):
+    uid = message.from_user.id
+    text = message.text or ""
+
+    if not text.strip():
+        return
+
+    u = get_user(uid)
+    u["messages"] += 1
+    u["iriski"] += random.randint(1, 10)
+
+# ==================================================
 #                    ЗАПУСК
 # ==================================================
 async def main():
     logging.basicConfig(level=logging.INFO)
-    print("Darkgram Bot запущен...")
+    print("Darkgram Casino запущено...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
