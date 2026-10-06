@@ -11,9 +11,10 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 # ==========================================
 # ВСТАВЬ СВОЙ ТОКЕН СЮДА (в кавычки):
 # ==========================================
-BOT_TOKEN = "8953012145:AAG7lEEvJn3s6gK3VlbyJ0vMYkTi6zUUv2E"
+BOT_TOKEN = "8953012145:AAGyVDgkX8Hy4GdpsqgBY0TpNZ5iBvNwKcM"
 
 DATA_FILE = "data.json"
+FREE_CASE_COOLDOWN_HOURS = 24
 
 # ========== РЕДКОСТИ ==========
 RARITY_EMOJI = {
@@ -40,6 +41,9 @@ CASES = {
     "легендарный": {"price": 15000, "chances": {"legendary": 0.60, "mythic": 0.30, "divine": 0.10}},
     "божественный": {"price": 50000, "chances": {"mythic": 0.70, "divine": 0.30}}
 }
+
+# Шансы для бесплатного кейса (как у обычного, но чуть лучше)
+FREE_CASE_CHANCES = {"common": 0.70, "rare": 0.25, "epic": 0.05}
 
 def generate_id(rarity):
     if rarity == "common": return str(random.randint(1000000, 9999999))
@@ -69,7 +73,10 @@ def get_user(uid, name=None):
     data = load_data()
     uid = str(uid)
     if uid not in data:
-        data[uid] = {"name": name or f"ID{uid}", "iriski": 1000, "ids": [], "messages": 0}
+        data[uid] = {
+            "name": name or f"ID{uid}", "iriski": 1000, "ids": [],
+            "messages": 0, "last_free_case": None
+        }
     elif name:
         data[uid]["name"] = name
     save_data(data)
@@ -79,7 +86,10 @@ def update_user(uid, **kwargs):
     data = load_data()
     uid = str(uid)
     if uid not in data:
-        data[uid] = {"name": f"ID{uid}", "iriski": 1000, "ids": [], "messages": 0}
+        data[uid] = {
+            "name": f"ID{uid}", "iriski": 1000, "ids": [],
+            "messages": 0, "last_free_case": None
+        }
     data[uid].update(kwargs)
     save_data(data)
 
@@ -104,37 +114,79 @@ dp = Dispatcher()
 async def cmd_start(message: types.Message):
     get_user(message.from_user.id, message.from_user.first_name)
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎁 Кейсы", callback_data="show_cases"),
-         InlineKeyboardButton(text="🎒 Инвентарь", callback_data="show_inv")],
-        [InlineKeyboardButton(text="🔨 Крафт", callback_data="show_craft"),
-         InlineKeyboardButton(text="📢 Аукцион", callback_data="show_auction")],
-        [InlineKeyboardButton(text="🏆 Коллекция", callback_data="show_coll")]
+        [InlineKeyboardButton(text="🎁 Бесплатный кейс", callback_data="free_case")],
+        [InlineKeyboardButton(text="📦 Кейсы за ириски", callback_data="show_cases")],
+        [InlineKeyboardButton(text="🎒 Инвентарь", callback_data="show_inv"),
+         InlineKeyboardButton(text="🔨 Крафт", callback_data="show_craft")],
+        [InlineKeyboardButton(text="📢 Аукцион", callback_data="show_auction"),
+         InlineKeyboardButton(text="🏆 Коллекция", callback_data="show_coll")]
     ])
     await message.answer(
         "🎰 <b>ID-Кейсы</b>\n\n"
         "⚪ Обычный | 🟢 Редкий | 🔵 Эпический\n"
         "🟣 Легендарный | 🔴 Мифический | 🟡 Божественный\n\n"
         "<b>Команды:</b>\n"
-        "  кейсы — список кейсов\n"
+        "  кейс — бесплатный кейс (раз в 24ч)\n"
+        "  кейсы — список платных\n"
         "  открыть обычный\n"
         "  айди — инвентарь\n"
-        "  продать 777777 — продать себе\n"
+        "  продать 777777\n"
         "  крафт 777777 — 3 в 1\n"
-        "  аукцион 777777 5000 — выставить\n"
-        "  ставка 777777 6000 — сделать ставку\n"
+        "  аукцион 777777 5000\n"
+        "  ставка 777777 6000\n"
         "  аукционы — список лотов\n"
-        "  обмен @юзер 777777 1000 — продать игроку\n"
+        "  завершить 777777 — закрыть лот\n"
+        "  обмен @юзер 777777 1000\n"
         "  коллекция — топ",
         parse_mode="HTML",
         reply_markup=kb
     )
 
 # ==================================================
-#                    КЕЙСЫ
+#                БЕСПЛАТНЫЙ КЕЙС
+# ==================================================
+@dp.message(lambda m: m.text and m.text.lower().strip() in ("кейс", "/кейс"))
+async def cmd_free_case(message: types.Message):
+    u = get_user(message.from_user.id, message.from_user.first_name)
+    now = datetime.now()
+    if u.get("last_free_case"):
+        last = datetime.fromisoformat(u["last_free_case"])
+        diff = now - last
+        if diff < timedelta(hours=FREE_CASE_COOLDOWN_HOURS):
+            left = timedelta(hours=FREE_CASE_COOLDOWN_HOURS) - diff
+            h = left.seconds // 3600
+            m = (left.seconds % 3600) // 60
+            await message.answer(
+                f"⏰ Бесплатный кейс уже открыт!\n\n"
+                f"Следующий через <b>{h}ч {m}мин</b>",
+                parse_mode="HTML"
+            )
+            return
+
+    rarity = get_rarity(FREE_CASE_CHANCES)
+    new_id = generate_id(rarity)
+    ids = u["ids"] + [{"id": new_id, "rarity": rarity}]
+    update_user(message.from_user.id, ids=ids, last_free_case=now.isoformat())
+
+    await message.answer(
+        f"🎁 <b>Бесплатный кейс открыт!</b>\n\n"
+        f"{RARITY_EMOJI[rarity]} Редкость: <b>{RARITY_NAMES[rarity]}</b>\n"
+        f"🆔 Твой ID: <code>{new_id}</code>\n\n"
+        f"⏰ Следующий кейс через 24 часа.",
+        parse_mode="HTML"
+    )
+
+@dp.callback_query(lambda c: c.data == "free_case")
+async def cb_free_case(call: types.CallbackQuery):
+    await cmd_free_case(call.message)
+    await call.answer()
+
+# ==================================================
+#                ПЛАТНЫЕ КЕЙСЫ
 # ==================================================
 @dp.message(lambda m: m.text and m.text.lower().strip() in ("кейсы", "/кейсы"))
 async def cmd_cases(message: types.Message):
-    text = "🎁 <b>Кейсы</b>\n\n"
+    text = "📦 <b>Кейсы за ириски</b>\n\n"
     for name, data in CASES.items():
         text += f"<b>{name.capitalize()}</b> — {data['price']} ирисок\n"
         for rarity, chance in data["chances"].items():
@@ -191,7 +243,7 @@ async def cb_inv(call: types.CallbackQuery):
     await cmd_inv(call.message); await call.answer()
 
 # ==================================================
-#                    ПРОДАЖА СЕБЕ
+#                    ПРОДАЖА
 # ==================================================
 @dp.message(lambda m: m.text and m.text.lower().startswith(("продать", "/продать")))
 async def cmd_sell(message: types.Message):
@@ -221,12 +273,7 @@ async def cmd_sell(message: types.Message):
 async def cmd_craft(message: types.Message):
     args = message.text.replace("/", "").split()
     if len(args) < 2:
-        await message.answer(
-            "🔨 <b>Крафт</b>\n\n"
-            "3 ID одной редкости → 1 ID следующей.\n\n"
-            "Формат: <code>крафт 777777</code>",
-            parse_mode="HTML"
-        ); return
+        await message.answer("🔨 Формат: <code>крафт 777777</code>", parse_mode="HTML"); return
     target_id = args[1]
     u = get_user(message.from_user.id, message.from_user.first_name)
     found = next((i for i in u["ids"] if i["id"] == target_id), None)
@@ -255,9 +302,7 @@ async def cmd_craft(message: types.Message):
 @dp.callback_query(lambda c: c.data == "show_craft")
 async def cb_craft(call: types.CallbackQuery):
     await call.message.answer(
-        "🔨 <b>Крафт</b>\n\n"
-        "3 ID одной редкости → 1 следующей.\n\n"
-        "Формат: <code>крафт 777777</code>",
+        "🔨 <b>Крафт</b>\n\n3 ID одной редкости → 1 следующей.\nФормат: <code>крафт 777777</code>",
         parse_mode="HTML"
     ); await call.answer()
 
@@ -275,7 +320,7 @@ async def cmd_auction(message: types.Message):
     except:
         await message.answer("❌ Цена числом."); return
     if start_price < 100:
-        await message.answer("❌ Минимальная цена: 100"); return
+        await message.answer("❌ Минимум 100"); return
     u = get_user(message.from_user.id, message.from_user.first_name)
     found = next((i for i in u["ids"] if i["id"] == target_id), None)
     if not found:
@@ -289,17 +334,15 @@ async def cmd_auction(message: types.Message):
         "rarity": found["rarity"],
         "price": start_price,
         "top_bidder": None,
-        "top_bidder_name": None,
-        "created": datetime.now().isoformat()
+        "top_bidder_name": None
     }
     save_auctions(auctions)
-    # Убираем из инвентаря
     ids = [i for i in u["ids"] if i["id"] != target_id]
     update_user(message.from_user.id, ids=ids)
     await message.answer(
         f"📢 <b>Аукцион создан!</b>\n\n"
         f"{RARITY_EMOJI[found['rarity']]} <code>{target_id}</code>\n"
-        f"Стартовая цена: {start_price}\n\n"
+        f"Старт: {start_price}\n\n"
         f"Ставки: <code>ставка {target_id} сумма</code>",
         parse_mode="HTML"
     )
@@ -308,7 +351,7 @@ async def cmd_auction(message: types.Message):
 async def cmd_auctions(message: types.Message):
     auctions = get_auctions()
     if not auctions:
-        await message.answer("📢 Аукционов пока нет."); return
+        await message.answer("📢 Аукционов нет."); return
     text = "📢 <b>Активные аукционы</b>\n\n"
     for tid, a in auctions.items():
         top = a["top_bidder_name"] or "нет ставок"
@@ -346,26 +389,21 @@ async def cmd_bid(message: types.Message):
     u = get_user(message.from_user.id, message.from_user.first_name)
     if u["iriski"] < amount:
         await message.answer(f"❌ Недостаточно. У тебя: {u['iriski']}"); return
-    # Возвращаем прошлому лидеру
     if a["top_bidder"]:
         prev = get_user(int(a["top_bidder"]))
         update_user(int(a["top_bidder"]), iriski=prev["iriski"] + a["price"])
-    # Списываем у нового
     update_user(message.from_user.id, iriski=u["iriski"] - amount)
     a["price"] = amount
     a["top_bidder"] = str(message.from_user.id)
     a["top_bidder_name"] = message.from_user.first_name
     save_auctions(auctions)
     await message.answer(
-        f"✅ <b>Ставка принята</b>\n\n"
-        f"Лот: <code>{target_id}</code>\n"
-        f"Новая цена: {amount}\n"
-        f"Лидер: {message.from_user.first_name}",
+        f"✅ <b>Ставка принята</b>\n\nЛот: <code>{target_id}</code>\nЦена: {amount}\nЛидер: {message.from_user.first_name}",
         parse_mode="HTML"
     )
 
 @dp.message(lambda m: m.text and m.text.lower().startswith(("завершить", "/завершить")))
-async def cmd_finish_auction(message: types.Message):
+async def cmd_finish(message: types.Message):
     args = message.text.replace("/", "").split()
     if len(args) < 2:
         await message.answer("Формат: <code>завершить 777777</code>", parse_mode="HTML"); return
@@ -377,25 +415,21 @@ async def cmd_finish_auction(message: types.Message):
     if str(message.from_user.id) != a["seller_id"]:
         await message.answer("❌ Только продавец может завершить."); return
     if not a["top_bidder"]:
-        # Никто не купил — возвращаем ID продавцу
         seller = get_user(int(a["seller_id"]))
         ids = seller["ids"] + [{"id": target_id, "rarity": a["rarity"]}]
         update_user(int(a["seller_id"]), ids=ids)
         del auctions[target_id]; save_auctions(auctions)
         await message.answer("❌ Никто не купил. ID возвращён."); return
-    # Отдаём ID покупателю
     buyer = get_user(int(a["top_bidder"]))
     ids = buyer["ids"] + [{"id": target_id, "rarity": a["rarity"]}]
     update_user(int(a["top_bidder"]), ids=ids)
-    # Деньги продавцу
     seller = get_user(int(a["seller_id"]))
     update_user(int(a["seller_id"]), iriski=seller["iriski"] + a["price"])
     del auctions[target_id]; save_auctions(auctions)
     await message.answer(
         f"✅ <b>Аукцион завершён</b>\n\n"
         f"{RARITY_EMOJI[a['rarity']]} <code>{target_id}</code>\n"
-        f"Купил: {a['top_bidder_name']}\n"
-        f"Цена: {a['price']}",
+        f"Купил: {a['top_bidder_name']}\nЦена: {a['price']}",
         parse_mode="HTML"
     )
 
@@ -406,7 +440,7 @@ async def cmd_finish_auction(message: types.Message):
 async def cmd_trade(message: types.Message):
     args = message.text.replace("/", "").split()
     if len(args) < 4:
-        await message.answer("Формат: <code>обмен @юзернейм 777777 1000</code>", parse_mode="HTML"); return
+        await message.answer("Формат: <code>обмен @юзер 777777 1000</code>", parse_mode="HTML"); return
     target_username = args[1].lstrip("@").lower()
     target_id = args[2]
     try:
@@ -417,23 +451,19 @@ async def cmd_trade(message: types.Message):
     found = next((i for i in u["ids"] if i["id"] == target_id), None)
     if not found:
         await message.answer("❌ Нет такого ID."); return
-    # Ищем покупателя
     data = load_data()
     buyer_id = None
     for uid, udata in data.items():
-        if uid == "auctions":
-            continue
+        if uid == "auctions": continue
         if udata.get("name", "").lower() == target_username:
-            buyer_id = uid
-            break
+            buyer_id = uid; break
     if not buyer_id:
         await message.answer("❌ Игрок не найден."); return
     if buyer_id == str(message.from_user.id):
-        await message.answer("❌ Нельзя обменять с собой."); return
+        await message.answer("❌ Нельзя с собой."); return
     buyer = get_user(int(buyer_id))
     if buyer["iriski"] < price:
-        await message.answer("❌ У покупателя недостаточно ирисок."); return
-    # Переводим
+        await message.answer("❌ У покупателя недостаточно."); return
     ids = [i for i in u["ids"] if i["id"] != target_id]
     update_user(message.from_user.id, iriski=u["iriski"] + price, ids=ids)
     buyer_ids = buyer["ids"] + [found]
@@ -441,7 +471,6 @@ async def cmd_trade(message: types.Message):
     await message.answer(
         f"🤝 <b>Обмен выполнен</b>\n\n"
         f"{RARITY_EMOJI[found['rarity']]} <code>{target_id}</code>\n"
-        f"Продано: {message.from_user.first_name} → {target_username}\n"
         f"Цена: {price}",
         parse_mode="HTML"
     )
