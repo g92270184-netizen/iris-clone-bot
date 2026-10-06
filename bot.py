@@ -9,7 +9,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 # ==========================================
 # ВСТАВЬ СВОЙ ТОКЕН СЮДА (в кавычки):
 # ==========================================
-BOT_TOKEN = "8996485032:AAGNJOMZNCK0XkRapr43i9OQ05vJLRec9a8"
+BOT_TOKEN = "8996485032:AAGz_VWacKC8xnokMZS-MzyRGhEwuzjc7EM"
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
