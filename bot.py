@@ -13,7 +13,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 # ==========================================
 # ВСТАВЬ СВОЙ ТОКЕН СЮДА (в кавычки):
 # ==========================================
-BOT_TOKEN = "8996485032:AAGrZHNqRbBnYXdDSN5PwffrmlvAQp75Uf0"
+BOT_TOKEN = "8953012145:AAHqw-JLnUAUsAuju3mjTW2cU6eDhBrzXMk"
 
 DATA_FILE = "data.json"
 
@@ -73,7 +73,7 @@ HTML = """
     </style>
 </head>
 <body>
-    <h1>🏆 Таблица лидеров</h1>
+    <h1>Таблица лидеров</h1>
     <div class="list" id="list"><div class="empty">Загрузка...</div></div>
     <script>
         async function load() {
@@ -92,7 +92,7 @@ HTML = """
                 return `<div class="list-item">
                     <div class="rank ${cls}">${i + 1}</div>
                     <div class="name">${u.name}</div>
-                    <div class="score">💎 ${u.iriski}</div>
+                    <div class="score">${u.iriski}</div>
                 </div>`;
             }).join('');
         }
@@ -136,33 +136,48 @@ dp = Dispatcher()
 async def cmd_start(message: types.Message):
     get_user(message.from_user.id, message.from_user.first_name)
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🏆 Таблица лидеров", web_app=WebAppInfo(url="https://iris-clone-bot.onrender.com"))]
+        [InlineKeyboardButton(text="Таблица лидеров", web_app=WebAppInfo(url="https://iris-clone-bot.onrender.com"))]
     ])
     await message.answer(
-        "🎰 <b>Darkgram Casino</b> 🎰\n\n"
-        "💰 /баланс\n"
-        "🎁 /бонус\n"
-        "🏆 /топ\n"
-        "📊 /статистика\n\n"
-        "🎲 /кубик 100\n"
-        "🎰 /слоты 100\n"
-        "🎡 /рулетка 100 красное",
+        "<b>Darkgram Casino</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "<b>Экономика</b>\n"
+        "  баланс — сколько ирисок\n"
+        "  бонус — ежедневный бонус\n"
+        "  топ — таблица лидеров\n"
+        "  статистика — общая статистика\n\n"
+        "<b>Игры</b>\n"
+        "  кубик 100 — ставка на кубик\n"
+        "  слоты 100 — игровые автоматы\n"
+        "  рулетка 100 красное — ставка на цвет\n"
+        "  монетка 100 — орёл или решка\n\n"
+        "<b>Общение</b>\n"
+        "  перевести @юзернейм 100 — передать ириски\n"
+        "  дуэль @юзернейм 100 — вызвать на дуэль\n\n"
+        "Пиши команды без / — я пойму.",
         parse_mode="HTML",
         reply_markup=kb
     )
 
-@dp.message(Command("баланс"))
+# ==================================================
+#                    БАЛАНС
+# ==================================================
+@dp.message(lambda m: m.text and m.text.lower().strip() in ("баланс", "/баланс"))
 async def cmd_balance(message: types.Message):
     u = get_user(message.from_user.id, message.from_user.first_name)
     await message.answer(
-        f"💰 <b>Баланс</b>\n\n"
-        f"💎 Ирисок: <b>{u['iriski']}</b>\n"
-        f"🏆 Побед: {u['wins']}\n"
-        f"💀 Поражений: {u['losses']}",
+        "<b>Баланс</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        f"Ирисок: <b>{u['iriski']}</b>\n"
+        f"Побед: {u['wins']}\n"
+        f"Поражений: {u['losses']}",
         parse_mode="HTML"
     )
 
-@dp.message(Command("бонус"))
+# ==================================================
+#                    БОНУС
+# ==================================================
+@dp.message(lambda m: m.text and m.text.lower().strip() in ("бонус", "/бонус"))
 async def cmd_bonus(message: types.Message):
     u = get_user(message.from_user.id, message.from_user.first_name)
     now = datetime.now()
@@ -173,128 +188,345 @@ async def cmd_bonus(message: types.Message):
             left = timedelta(hours=24) - diff
             h = left.seconds // 3600
             m = (left.seconds % 3600) // 60
-            await message.answer(f"⏰ Следующий бонус через <b>{h}ч {m}мин</b>", parse_mode="HTML")
+            await message.answer(f"Следующий бонус через <b>{h}ч {m}мин</b>", parse_mode="HTML")
             return
     bonus = random.randint(100, 500)
     update_user(message.from_user.id, iriski=u["iriski"] + bonus, last_bonus=now.isoformat())
-    await message.answer(f"🎁 <b>Бонус!</b>\n\n💎 +{bonus}\n💰 Баланс: {u['iriski'] + bonus}", parse_mode="HTML")
+    await message.answer(
+        "<b>Бонус получен</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        f"+{bonus} ирисок\n"
+        f"Баланс: {u['iriski'] + bonus}",
+        parse_mode="HTML"
+    )
 
-@dp.message(Command("топ"))
+# ==================================================
+#                    ТОП
+# ==================================================
+@dp.message(lambda m: m.text and m.text.lower().strip() in ("топ", "/топ"))
 async def cmd_top(message: types.Message):
     data = load_data()
     if not data:
-        await message.answer("🏆 Пока нет игроков.")
+        await message.answer("Пока нет игроков.")
         return
     sorted_users = sorted(data.items(), key=lambda x: x[1]["iriski"], reverse=True)[:10]
-    text = "🏆 <b>Топ богачей</b>\n\n<pre>"
-    text += "№  Имя         Ириски\n"
-    text += "─────────────────────\n"
+    text = "<b>Таблица лидеров</b>\n\n<pre>"
+    text += "Место  Имя           Ириски\n"
+    text += "─────────────────────────────\n"
     for i, (uid, u) in enumerate(sorted_users, 1):
         name = u.get("name", f"ID{uid}")
-        if len(name) > 10:
-            name = name[:9] + "…"
-        text += f"{i:<3}{name:<12}{u['iriski']}\n"
+        if len(name) > 12:
+            name = name[:11] + "…"
+        text += f"{i:<6} {name:<13} {u['iriski']}\n"
     text += "</pre>"
     await message.answer(text, parse_mode="HTML")
 
-@dp.message(Command("статистика"))
+# ==================================================
+#                    СТАТИСТИКА
+# ==================================================
+@dp.message(lambda m: m.text and m.text.lower().strip() in ("статистика", "/статистика"))
 async def cmd_stats(message: types.Message):
     data = load_data()
     if not data:
-        await message.answer("📊 Пока нет данных.")
+        await message.answer("Пока нет данных.")
         return
     total = sum(u["iriski"] for u in data.values())
     wins = sum(u["wins"] for u in data.values())
     losses = sum(u["losses"] for u in data.values())
     await message.answer(
-        f"📊 <b>Статистика</b>\n\n"
-        f"👥 Игроков: {len(data)}\n"
-        f"💎 Всего ирисок: {total}\n"
-        f"🏆 Побед: {wins}\n"
-        f"💀 Поражений: {losses}",
+        "<b>Статистика</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        f"Игроков: {len(data)}\n"
+        f"Всего ирисок: {total}\n"
+        f"Побед: {wins}\n"
+        f"Поражений: {losses}",
         parse_mode="HTML"
     )
 
-@dp.message(Command("кубик"))
+# ==================================================
+#                    КУБИК
+# ==================================================
+@dp.message(lambda m: m.text and m.text.lower().startswith(("кубик", "/кубик")))
 async def cmd_dice(message: types.Message):
     u = get_user(message.from_user.id, message.from_user.first_name)
-    args = message.text.split()
+    args = message.text.replace("/", "").split()
     if len(args) < 2:
-        await message.answer("🎲 /кубик 100")
+        await message.answer("Формат: <code>кубик 100</code>", parse_mode="HTML")
         return
     try:
         bet = int(args[1])
     except:
-        await message.answer("❌ Ставка числом.")
+        await message.answer("Ставка должна быть числом.")
         return
     if bet <= 0 or u["iriski"] < bet:
-        await message.answer(f"❌ Недостаточно. У тебя: {u['iriski']}")
+        await message.answer(f"Недостаточно ирисок. У тебя: {u['iriski']}")
         return
     p, b = random.randint(1, 6), random.randint(1, 6)
     if p > b:
         update_user(message.from_user.id, iriski=u["iriski"] + bet, wins=u["wins"] + 1)
-        await message.answer(f"🏆 Победа!\n🎲 Ты: {p} | Бот: {b}\n💰 +{bet}\n💎 {u['iriski'] + bet}")
+        await message.answer(f"<b>Победа</b>\nТы: {p} | Бот: {b}\n+{bet}\nБаланс: {u['iriski'] + bet}", parse_mode="HTML")
     elif p < b:
         update_user(message.from_user.id, iriski=u["iriski"] - bet, losses=u["losses"] + 1)
-        await message.answer(f"💀 Проигрыш\n🎲 Ты: {p} | Бот: {b}\n💸 -{bet}\n💎 {u['iriski'] - bet}")
+        await message.answer(f"<b>Проигрыш</b>\nТы: {p} | Бот: {b}\n-{bet}\nБаланс: {u['iriski'] - bet}", parse_mode="HTML")
     else:
-        await message.answer(f"🤝 Ничья! {p} = {b}")
+        await message.answer(f"<b>Ничья</b>\n{p} = {b}", parse_mode="HTML")
 
-@dp.message(Command("слоты"))
+# ==================================================
+#                    СЛОТЫ
+# ==================================================
+@dp.message(lambda m: m.text and m.text.lower().startswith(("слоты", "/слоты")))
 async def cmd_slots(message: types.Message):
     u = get_user(message.from_user.id, message.from_user.first_name)
-    args = message.text.split()
+    args = message.text.replace("/", "").split()
     if len(args) < 2:
-        await message.answer("🎰 /слоты 100")
+        await message.answer("Формат: <code>слоты 100</code>", parse_mode="HTML")
         return
     try:
         bet = int(args[1])
     except:
-        await message.answer("❌ Ставка числом.")
+        await message.answer("Ставка должна быть числом.")
         return
     if bet <= 0 or u["iriski"] < bet:
-        await message.answer(f"❌ Недостаточно. У тебя: {u['iriski']}")
+        await message.answer(f"Недостаточно ирисок. У тебя: {u['iriski']}")
         return
     sym = ["🍒", "🍋", "🍊", "🍇", "💎", "7️⃣"]
     s1, s2, s3 = random.choice(sym), random.choice(sym), random.choice(sym)
     if s1 == s2 == s3:
         win = bet * (10 if s1 == "7️⃣" else (5 if s1 == "💎" else 3))
         update_user(message.from_user.id, iriski=u["iriski"] + win, wins=u["wins"] + 1)
-        await message.answer(f"💥 ДЖЕКПОТ!\n{s1}|{s2}|{s3}\n💰 +{win}\n💎 {u['iriski'] + win}")
+        await message.answer(f"<b>Джекпот</b>\n{s1} | {s2} | {s3}\n+{win}\nБаланс: {u['iriski'] + win}", parse_mode="HTML")
     elif s1 == s2 or s2 == s3 or s1 == s3:
         update_user(message.from_user.id, iriski=u["iriski"] + bet, wins=u["wins"] + 1)
-        await message.answer(f"✨ Два в ряд!\n{s1}|{s2}|{s3}\n💰 +{bet}\n💎 {u['iriski'] + bet}")
+        await message.answer(f"<b>Два в ряд</b>\n{s1} | {s2} | {s3}\n+{bet}\nБаланс: {u['iriski'] + bet}", parse_mode="HTML")
     else:
         update_user(message.from_user.id, iriski=u["iriski"] - bet, losses=u["losses"] + 1)
-        await message.answer(f"💀 Проигрыш\n{s1}|{s2}|{s3}\n💸 -{bet}\n💎 {u['iriski'] - bet}")
+        await message.answer(f"<b>Проигрыш</b>\n{s1} | {s2} | {s3}\n-{bet}\nБаланс: {u['iriski'] - bet}", parse_mode="HTML")
 
-@dp.message(Command("рулетка"))
+# ==================================================
+#                    РУЛЕТКА
+# ==================================================
+@dp.message(lambda m: m.text and m.text.lower().startswith(("рулетка", "/рулетка")))
 async def cmd_roulette(message: types.Message):
     u = get_user(message.from_user.id, message.from_user.first_name)
-    args = message.text.split()
+    args = message.text.replace("/", "").split()
     if len(args) < 3:
-        await message.answer("🎡 /рулетка 100 красное")
+        await message.answer("Формат: <code>рулетка 100 красное</code>", parse_mode="HTML")
         return
     try:
         bet = int(args[1])
     except:
-        await message.answer("❌ Ставка числом.")
+        await message.answer("Ставка должна быть числом.")
         return
     color = args[2].lower().replace("ё", "е")
     if color not in ("красное", "черное"):
-        await message.answer("❌ Цвет: красное или чёрное")
+        await message.answer("Цвет: красное или чёрное")
         return
     if bet <= 0 or u["iriski"] < bet:
-        await message.answer(f"❌ Недостаточно. У тебя: {u['iriski']}")
+        await message.answer(f"Недостаточно ирисок. У тебя: {u['iriski']}")
         return
     result = random.choice(["красное", "черное"])
     if result == color:
         update_user(message.from_user.id, iriski=u["iriski"] + bet, wins=u["wins"] + 1)
-        await message.answer(f"🏆 Победа!\n🎡 {result}\n💰 +{bet}\n💎 {u['iriski'] + bet}")
+        await message.answer(f"<b>Победа</b>\nВыпало: {result}\n+{bet}\nБаланс: {u['iriski'] + bet}", parse_mode="HTML")
     else:
         update_user(message.from_user.id, iriski=u["iriski"] - bet, losses=u["losses"] + 1)
-        await message.answer(f"💀 Проигрыш\n🎡 {result}\n💸 -{bet}\n💎 {u['iriski'] - bet}")
+        await message.answer(f"<b>Проигрыш</b>\nВыпало: {result}\n-{bet}\nБаланс: {u['iriski'] - bet}", parse_mode="HTML")
 
+# ==================================================
+#                    МОНЕТКА
+# ==================================================
+@dp.message(lambda m: m.text and m.text.lower().startswith(("монетка", "/монетка")))
+async def cmd_coin(message: types.Message):
+    u = get_user(message.from_user.id, message.from_user.first_name)
+    args = message.text.replace("/", "").split()
+    if len(args) < 2:
+        await message.answer("Формат: <code>монетка 100</code>", parse_mode="HTML")
+        return
+    try:
+        bet = int(args[1])
+    except:
+        await message.answer("Ставка должна быть числом.")
+        return
+    if bet <= 0 or u["iriski"] < bet:
+        await message.answer(f"Недостаточно ирисок. У тебя: {u['iriski']}")
+        return
+    result = random.choice(["орёл", "решка"])
+    win = random.choice([True, False])
+    if win:
+        update_user(message.from_user.id, iriski=u["iriski"] + bet, wins=u["wins"] + 1)
+        await message.answer(f"<b>Победа</b>\nВыпало: {result}\n+{bet}\nБаланс: {u['iriski'] + bet}", parse_mode="HTML")
+    else:
+        update_user(message.from_user.id, iriski=u["iriski"] - bet, losses=u["losses"] + 1)
+        await message.answer(f"<b>Проигрыш</b>\nВыпало: {result}\n-{bet}\nБаланс: {u['iriski'] - bet}", parse_mode="HTML")
+
+# ==================================================
+#                    ПЕРЕВОД ИРИСОК
+# ==================================================
+@dp.message(lambda m: m.text and m.text.lower().startswith(("перевести", "/перевести")))
+async def cmd_transfer(message: types.Message):
+    u = get_user(message.from_user.id, message.from_user.first_name)
+    args = message.text.replace("/", "").split()
+    if len(args) < 3:
+        await message.answer("Формат: <code>перевести @юзернейм 100</code>", parse_mode="HTML")
+        return
+    target_username = args[1].lstrip("@").lower()
+    try:
+        amount = int(args[2])
+    except:
+        await message.answer("Сумма должна быть числом.")
+        return
+    if amount <= 0 or u["iriski"] < amount:
+        await message.answer(f"Недостаточно ирисок. У тебя: {u['iriski']}")
+        return
+    data = load_data()
+    target_id = None
+    for uid, udata in data.items():
+        if udata.get("name", "").lower() == target_username:
+            target_id = uid
+            break
+    if not target_id:
+        await message.answer("Игрок не найден. Он должен хотя бы раз написать в чат.")
+        return
+    if target_id == str(message.from_user.id):
+        await message.answer("Нельзя перевести самому себе.")
+        return
+    target_u = data[target_id]
+    update_user(message.from_user.id, iriski=u["iriski"] - amount)
+    update_user(target_id, iriski=target_u["iriski"] + amount)
+    await message.answer(
+        f"<b>Перевод выполнен</b>\n"
+        f"Кому: @{target_username}\n"
+        f"Сумма: {amount}\n"
+        f"Твой баланс: {u['iriski'] - amount}",
+        parse_mode="HTML"
+    )
+
+# ==================================================
+#                    ДУЭЛЬ
+# ==================================================
+pending_duels = {}
+
+@dp.message(lambda m: m.text and m.text.lower().startswith(("дуэль", "/дуэль")))
+async def cmd_duel(message: types.Message):
+    u = get_user(message.from_user.id, message.from_user.first_name)
+    args = message.text.replace("/", "").split()
+    if len(args) < 3:
+        await message.answer("Формат: <code>дуэль @юзернейм 100</code>", parse_mode="HTML")
+        return
+    target_username = args[1].lstrip("@").lower()
+    try:
+        bet = int(args[2])
+    except:
+        await message.answer("Ставка должна быть числом.")
+        return
+    if bet <= 0 or u["iriski"] < bet:
+        await message.answer(f"Недостаточно ирисок. У тебя: {u['iriski']}")
+        return
+    data = load_data()
+    target_id = None
+    for uid, udata in data.items():
+        if udata.get("name", "").lower() == target_username:
+            target_id = uid
+            break
+    if not target_id:
+        await message.answer("Игрок не найден.")
+        return
+    if target_id == str(message.from_user.id):
+        await message.answer("Нельзя вызвать себя.")
+        return
+    target_u = data[target_id]
+    if target_u["iriski"] < bet:
+        await message.answer("У соперника недостаточно ирисок.")
+        return
+
+    duel_id = f"{message.from_user.id}_{target_id}_{int(datetime.now().timestamp())}"
+    pending_duels[duel_id] = {
+        "challenger_id": str(message.from_user.id),
+        "challenger_name": message.from_user.first_name,
+        "target_id": target_id,
+        "target_name": target_u["name"],
+        "bet": bet,
+        "chat_id": message.chat.id
+    }
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Принять", callback_data=f"duel_accept_{duel_id}"),
+         InlineKeyboardButton(text="Отклонить", callback_data=f"duel_decline_{duel_id}")]
+    ])
+    await message.answer(
+        f"<b>Вызов на дуэль</b>\n"
+        f"Вызвал: {message.from_user.first_name}\n"
+        f"Вызван: {target_u['name']}\n"
+        f"Ставка: {bet}\n\n"
+        f"У соперника 5 минут.",
+        parse_mode="HTML",
+        reply_markup=kb
+    )
+    asyncio.create_task(duel_timeout(duel_id))
+
+async def duel_timeout(duel_id):
+    await asyncio.sleep(300)
+    if duel_id in pending_duels:
+        d = pending_duels.pop(duel_id)
+        try:
+            await bot.send_message(d["chat_id"], f"<b>Дуэль отменена</b> — {d['target_name']} не ответил.", parse_mode="HTML")
+        except:
+            pass
+
+@dp.callback_query(lambda c: c.data.startswith("duel_accept_"))
+async def cb_accept(call: types.CallbackQuery):
+    duel_id = call.data.replace("duel_accept_", "")
+    if duel_id not in pending_duels:
+        await call.answer("Дуэль истекла.", show_alert=True)
+        return
+    d = pending_duels.pop(duel_id)
+    if str(call.from_user.id) != d["target_id"]:
+        await call.answer("Это не твоя дуэль.", show_alert=True)
+        return
+    u1 = get_user(int(d["challenger_id"]), d["challenger_name"])
+    u2 = get_user(int(d["target_id"]), d["target_name"])
+    bet = d["bet"]
+    if u1["iriski"] < bet or u2["iriski"] < bet:
+        await call.message.edit_text("Недостаточно ирисок у кого-то из игроков.")
+        return
+    r1, r2 = random.randint(1, 6), random.randint(1, 6)
+    if r1 == r2:
+        await call.message.edit_text(f"<b>Ничья</b>\n{d['challenger_name']}: {r1}\n{d['target_name']}: {r2}", parse_mode="HTML")
+        return
+    if r1 > r2:
+        winner, loser = d["challenger_id"], d["target_id"]
+        wname, lname = d["challenger_name"], d["target_name"]
+    else:
+        winner, loser = d["target_id"], d["challenger_id"]
+        wname, lname = d["target_name"], d["challenger_name"]
+    wu = get_user(int(winner))
+    lu = get_user(int(loser))
+    update_user(int(winner), iriski=wu["iriski"] + bet, wins=wu["wins"] + 1)
+    update_user(int(loser), iriski=lu["iriski"] - bet, losses=lu["losses"] + 1)
+    await call.message.edit_text(
+        f"<b>Дуэль завершена</b>\n"
+        f"{d['challenger_name']}: {r1}\n"
+        f"{d['target_name']}: {r2}\n\n"
+        f"Победил: <b>{wname}</b>\n"
+        f"Выигрыш: {bet}",
+        parse_mode="HTML"
+    )
+
+@dp.callback_query(lambda c: c.data.startswith("duel_decline_"))
+async def cb_decline(call: types.CallbackQuery):
+    duel_id = call.data.replace("duel_decline_", "")
+    if duel_id not in pending_duels:
+        await call.answer("Дуэль истекла.", show_alert=True)
+        return
+    d = pending_duels.pop(duel_id)
+    if str(call.from_user.id) != d["target_id"]:
+        await call.answer("Это не твоя дуэль.", show_alert=True)
+        return
+    await call.message.edit_text(f"<b>Дуэль отклонена</b>\n{d['target_name']} отказался.", parse_mode="HTML")
+
+# ==================================================
+#                    СЧЁТЧИК
+# ==================================================
 @dp.message()
 async def handle_message(message: types.Message):
     uid = message.from_user.id
@@ -303,10 +535,13 @@ async def handle_message(message: types.Message):
     u = get_user(uid, message.from_user.first_name)
     update_user(uid, messages=u["messages"] + 1, iriski=u["iriski"] + random.randint(1, 10))
 
+# ==================================================
+#                    ЗАПУСК
+# ==================================================
 async def main():
     logging.basicConfig(level=logging.INFO)
     threading.Thread(target=run_flask, daemon=True).start()
-    print("Darkgram Bot запущено...")
+    print("Darkgram Casino запущено...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
